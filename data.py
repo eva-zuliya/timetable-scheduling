@@ -3,7 +3,7 @@ from schema import Venue, Trainer, Course, Trainee, Group
 # ===============================
 # TIME AND PARAMS
 # ===============================
-DAYS = 3
+DAYS = 10
 HOURS_PER_DAY = 8
 HORIZON = DAYS * HOURS_PER_DAY
 
@@ -30,7 +30,7 @@ venue_list = list(venues.keys())
 # ===============================
 _trainers = [
     Trainer(name="T1", eligible=["C1", "C2"]),
-    Trainer(name="T2", eligible=["C1", "C2"]),
+    Trainer(name="T2", eligible=["C1", "C2", "C3"]),
 ]
 
 eligible = {(trainer.name, course): 1 for trainer in _trainers for course in trainer.eligible}
@@ -43,6 +43,7 @@ trainers = [trainer.name for trainer in _trainers]
 _courses = [
     Course(name="C1", duration=8, prerequisites=[]),
     Course(name="C2", duration=4, prerequisites=["C1"]),
+    Course(name="C3", duration=4, prerequisites=["C1", "C2"]),
 ]
 
 courses = {
@@ -64,7 +65,7 @@ _trainees = [
     Trainee(name="E5", courses=["C1", "C2"]),
     Trainee(name="E6", courses=["C1", "C2"]),
     Trainee(name="E7", courses=["C1", "C2"]),
-    Trainee(name="E8", courses=["C1", "C2"])
+    Trainee(name="E8", courses=["C1", "C2", "C3"])
 ]
 
 _groups = {}

@@ -294,21 +294,59 @@ if status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
     # Header
     times = [(d, h) for d in range(DAYS) for h in range(HOURS_PER_DAY)]
     times_header = ["D{}:{:02d}".format(d + 1, h+8) for (d, h) in times]
-    first_cols = ["Venue", "Group", "Subgroup"]
+    first_cols = ["Venue", "Group", "Subgroup", "Course"]
     header_row = "| " + " | ".join(first_cols + times_header) + " |"
     sep_row = "|" + "|".join(["---"] * (len(first_cols) + len(times_header))) + "|"
     timetable_lines.append(header_row)
     timetable_lines.append(sep_row)
-    # All rows sorted by venue, group, subgroup for stable output
-    all_keys_sorted = sorted(timetable_cells.keys())
-    for v, g, u in all_keys_sorted:
+    # All rows sorted by venue, group, subgroup, course for stable output
+    # Need to deduce which course is scheduled in each cell (d, h) for this (v, g, u)
+    # Build a mapping from (v, g, u, d, h) -> course if possible
+    # We'll reconstruct course assignment from schedule_rows
+    cell_course_assignment = {}
+    for sched in schedule_rows:
+        v = sched["Venue"]
+        g = sched["Group"]
+        u = sched["Subgroup"]
+        c = sched["Course"]
+        # Get session's absolute start and end (in hours)
+        session_idx = sched["Session"]
+        s_day, s_hour = sched["Start Day"], sched["Start Hour"]
+        e_day, e_hour = sched["End Day"], sched["End Hour"]
+        s = s_day * HOURS_PER_DAY + s_hour
+        e = e_day * HOURS_PER_DAY + e_hour
+        for abs_time in range(s, e):
+            d = abs_time // HOURS_PER_DAY
+            h = abs_time % HOURS_PER_DAY
+            key = (v, g, u, d, h)
+            cell_course_assignment[key] = c
+    # Collect all unique (venue, group, subgroup, course) combinations that appear in timetable_cells
+    all_keys_with_courses = []
+    for (v, g, u) in sorted(timetable_cells.keys()):
+        # For each (d, h) timeslot look up which courses appear
         cell_map = timetable_cells[(v, g, u)]
+        courses_in_this_key = set()
+        for (d, h), trainer in cell_map.items():
+            c = cell_course_assignment.get((v, g, u, d, h))
+            if c is not None:
+                courses_in_this_key.add(c)
+        # If there are no courses (empty slot), show one row with blank course
+        if not courses_in_this_key:
+            all_keys_with_courses.append((v, g, u, ""))
+        else:
+            for c in sorted(courses_in_this_key):
+                all_keys_with_courses.append((v, g, u, c))
+    # Now, for each (v, g, u, c) row, fill the cells for that course only
+    for v, g, u, c in all_keys_with_courses:
         row = []
         for d, h in times:
-            trainer = cell_map.get((d, h), '')
-            row.append(trainer if trainer else "")
+            # Show trainer only if course matches at this slot
+            trainer = timetable_cells[(v, g, u)].get((d, h), "")
+            course_here = cell_course_assignment.get((v, g, u, d, h), "")
+            cell_value = trainer if course_here == c else ""
+            row.append(cell_value)
         timetable_lines.append(
-            "| {} | {} | {} | {} |".format(v, g, u, " | ".join(row))
+            "| {} | {} | {} | {} | {} |".format(v, g, u, c, " | ".join(row))
         )
     # Write out with proper line endings (just "\n")
     with open("timetable.md", "w", encoding="utf-8") as f:
