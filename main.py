@@ -13,12 +13,12 @@ params = {
     'file_master_course_sequence': 'data_source/[Data] Master Training Scheduling - PAS - Master Course Sequence.csv',
     'file_master_course_trainee': 'data_source/[Data] Master Training Scheduling - PAS - Master Course Employee.csv',
 
-    'minimum_course_participant': 7,
+    'minimum_course_participant': 30,
     'maximum_group_size': 30,
 
     'days': 19,
     'hours_per_day': 8,
-    'maximum_session_length': 6
+    'maximum_session_length': 8
 
 }
 

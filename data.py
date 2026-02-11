@@ -6,7 +6,7 @@ from utils import export_groups_courses_to_df, export_groups_trainee_to_df
 
 def read_data(params: dict):
     venues, venue_list = read_venue(
-        file_master_venue=params['file_master_revenue']
+        file_master_venue=params['file_master_venue']
     )
 
     trainers, eligible = read_trainers(
@@ -31,7 +31,7 @@ def read_data(params: dict):
         'days': params['days'],
         'hours_per_day': params['hours_per_day'],
         'horizon': params['days'] * params['hours_per_day'],
-        'max_session_length': params['max_session_length'],
+        'max_session_length': params['maximum_session_length'],
         'venues': venues,
         'venue_list': venue_list,
         'trainers': trainers,
@@ -93,8 +93,8 @@ def read_courses(
     _df_course = pd.read_csv(file_master_course)
 
     _df_prereq = pd.read_csv(file_master_course_sequence)
-    _df_prereq = _df_prereq[~(_df_prereq['is_course_valid'].str.contains('INVALID', na=False) | 
-                            _df_prereq['is_prerequisite_valid'].str.contains('INVALID', na=False))]
+    # _df_prereq = _df_prereq[~(_df_prereq['is_course_valid'].str.contains('INVALID', na=False) | 
+    #                         _df_prereq['is_prerequisite_valid'].str.contains('INVALID', na=False))]
     _df_prereq = _df_prereq[
         _df_prereq['prerequisite_course_name'].notna() &
         (_df_prereq['prerequisite_course_name'].str.strip() != "")

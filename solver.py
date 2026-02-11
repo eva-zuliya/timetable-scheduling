@@ -176,10 +176,14 @@ def run_solver(params: dict):
     for g in groups:
         for u in groups[g]["subgroups"]:
             for c in groups[g]["courses"]:
-                for p in courses[c]["prereq"]:
-                    for k1 in sessions.get(p, []):
-                        for k2 in sessions[c]:
-                            model.Add(start[g,u,p,k1] < start[g,u,c,k2])
+                for prereq in courses[c]["prereq"]:
+                    for k1 in sessions.get(prereq, []):
+                        for k2 in sessions.get(c, []):
+                            key1 = (g, u, prereq, k1)
+                            key2 = (g, u, c, k2)
+
+                            if key1 in start and key2 in start:
+                                model.Add(start[key1] < start[key2])
 
 
     # ===============================

@@ -3,3 +3,6 @@ __pycache__
 test.py
 timetable.md
 *.csv
+*.md
+export/
+data_source/
