@@ -4,11 +4,11 @@ import pandas as pd
 # ===============================
 # TIME AND PARAMS
 # ===============================
-DAYS = 5
-HOURS_PER_DAY = 8
+DAYS = 10
+HOURS_PER_DAY = 10
 HORIZON = DAYS * HOURS_PER_DAY
 
-MAX_SESSION_LENGTH = 4
+MAX_SESSION_LENGTH = 8
 MAX_GROUP_SIZE = 2
 
 
@@ -21,8 +21,6 @@ _venues = [
     Venue(name="V3", capacity=5),
     Venue(name="V4", capacity=5)
 ]
-
-_df_venue = pd.read_csv('data_source/[Data] Master Training Scheduling - PAS - Master Venue.csv')
 
 venues = {venue.name: venue.capacity for venue in _venues}
 venue_list = list(venues.keys())
