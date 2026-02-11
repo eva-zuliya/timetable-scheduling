@@ -1,4 +1,8 @@
-from schema import Venue, Trainer, Course, Trainee, Group, export_groups_to_df
+from schema import (
+    Venue, Trainer, Course, Trainee, Group,
+    export_groups_courses_to_df, export_groups_trainee_to_df
+)
+
 import pandas as pd
 import math
 
@@ -55,11 +59,9 @@ for _, trainer_row in _df_trainer.iterrows():
     
     # Get eligible courses for this trainer from eligibility dataframe
     eligible_courses = _df_eligible[_df_eligible['trainer_id'] == trainer_id]['course_name'].tolist()
-    
-    for i in range(5):  # Duplicate each trainer 10 times with unique names
-        _trainers.append(Trainer(name=f"{trainer_name}_{i+1}", eligible=eligible_courses))
 
-    # _trainers.append(Trainer(name=trainer_name, eligible=eligible_courses))
+    if eligible_courses:  # Only include trainers with at least one eligible course
+        _trainers.append(Trainer(name=trainer_name, eligible=eligible_courses))
 
 eligible = {(trainer.name, course): 1 for trainer in _trainers for course in trainer.eligible}
 trainers = [trainer.name for trainer in _trainers]
@@ -126,7 +128,7 @@ _df_trainee = _df_trainee.drop_duplicates(subset=["employee_id"])
 _df_enrollment = pd.read_csv('data_source/[Data] Master Training Scheduling - PAS - Master Course Employee.csv')
 _df_enrollment = _df_enrollment[
     _df_enrollment["course_name"].isin(
-        _df_enrollment.groupby("course_name")["employee_id"].nunique().loc[lambda s: s >= 10].index
+        _df_enrollment.groupby("course_name")["employee_id"].nunique().loc[lambda s: s >= 30].index
     )
 ]
 
@@ -144,7 +146,7 @@ for trainee in _trainees:
     course_key = tuple(sorted(trainee.courses))  # use tuple as key since set is unhashable
     if course_key not in _groups:
         _groups[course_key] = {
-            "name": "__".join(course_key),
+            "name": f"G{len(_groups) + 1}",
             "courses": list(course_key),
             "trainees": []
         }
@@ -155,7 +157,8 @@ _groups = [Group(**group) for group in _groups.values()]
 for group in _groups:
     group.split_subgroups(MAX_GROUP_SIZE)
 
-export_groups_to_df(_groups)
+export_groups_trainee_to_df(_groups)
+export_groups_courses_to_df(_groups)
 
 groups = {
     group.name: {

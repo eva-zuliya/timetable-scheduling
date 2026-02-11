@@ -37,7 +37,7 @@ class Group(BaseModel):
             self.subgroup[f"U{i//max_size + 1}"] = self.trainees[i:i+max_size]
 
 
-def export_groups_to_df(groups: list[Group]):
+def export_groups_trainee_to_df(groups: list[Group]):
     rows = []
 
     for g in groups:
@@ -55,4 +55,22 @@ def export_groups_to_df(groups: list[Group]):
                 })
 
     df = pd.DataFrame(rows)
-    df.to_csv("groups_trainee.csv", index=False)
+    df.to_csv("export/groups_trainee.csv", index=False)
+
+
+def export_groups_courses_to_df(groups: list[Group]):
+    rows = []
+
+    for g in groups:
+        # ensure subgroup is generated
+        if g.subgroup is None:
+            raise ValueError(f"Group {g.name} has no subgroup. Run split_subgroups() first.")
+
+        for course in g.courses:
+            rows.append({
+                "group_name": g.name,
+                "course": course
+            })
+
+    df = pd.DataFrame(rows)
+    df.to_csv("export/groups_courses.csv", index=False)

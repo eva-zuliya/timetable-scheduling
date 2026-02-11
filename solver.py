@@ -435,7 +435,7 @@ if status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
             "| {} | {} | {} | {} | {} |".format(v, g, u, c, " | ".join(row))
         )
     # Write out with proper line endings (just "\n")
-    with open("timetable.md", "w", encoding="utf-8") as f:
+    with open("export/timetable.md", "w", encoding="utf-8") as f:
         for line in timetable_lines:
             f.write(line.rstrip() + "\n")
     print("\nTimetable markdown written to timetable.md")
