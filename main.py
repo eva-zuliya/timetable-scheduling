@@ -18,7 +18,10 @@ params = {
 
     'days': 19,
     'hours_per_day': 8,
-    'maximum_session_length': 8
+    'maximum_session_length': 8,
+
+    'max_time_in_seconds': 900,
+    'num_search_workers': 8
 
 }
 
