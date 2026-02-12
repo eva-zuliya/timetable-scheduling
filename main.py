@@ -14,15 +14,16 @@ params = {
     'file_master_course_trainee': 'data_source/[Data] Master Training Scheduling - PAS - Master Course Employee.csv',
 
     'minimum_course_participant': 30,
-    'maximum_group_size': 30,
+    'maximum_group_size': 2,
 
     'days': 19,
     'hours_per_day': 8,
     'maximum_session_length': 8,
 
     'max_time_in_seconds': 900,
-    'num_search_workers': 8
+    'num_search_workers': 8,
 
+    'is_considering_shift': False
 }
 
 

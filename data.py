@@ -37,7 +37,8 @@ def read_data(params: dict):
         'trainers': trainers,
         'eligible': eligible,
         'courses': courses,
-        'groups': groups
+        'groups': groups,
+        'is_considering_shift': params['is_considering_shift']
     }
 
 
@@ -109,8 +110,9 @@ def read_courses(
         # Get prerequisites for this course from prerequisite dataframe
         prereqs = _df_prereq[_df_prereq['course_name'] == course_name]
         prerequisites = [] if prereqs.empty else prereqs['prerequisite_course_name'].tolist()
-        
-        _courses.append(Course(name=course_name, duration=duration, prerequisites=prerequisites))
+
+        if prerequisites:
+            _courses.append(Course(name=course_name, duration=duration, prerequisites=prerequisites))
 
     courses = {
         course.name: {
@@ -129,7 +131,8 @@ def read_trainees(
     file_master_course_trainee: str,
     report_name: str = 'report',
     minimum_course_participant: int = None,
-    maximum_group_size: int = 30
+    maximum_group_size: int = 30,
+    is_considering_shift: bool = False
 ):
     _df_trainee = pd.read_csv(file_master_trainee)
     _df_trainee = _df_trainee.drop_duplicates(subset=["employee_id"])
@@ -144,22 +147,35 @@ def read_trainees(
     _trainees = []
     for _, trainee_row in _df_trainee.iterrows():
         trainee_name = trainee_row['employee_id']
+
+        if is_considering_shift:
+            trainee_shift = trainee_row['shift']
+            if pd.isna(trainee_shift) or str(trainee_shift).strip() == "":
+                trainee_shift = "Non Shift"
+        else:
+            trainee_shift = "NS"
+
         # Get courses for this trainee from enrollment dataframe
         enrolled_courses = _df_enrollment[_df_enrollment['employee_id'] == trainee_name]['course_name'].tolist()
 
         if enrolled_courses:  # Only include trainees with at least one course
-            _trainees.append(Trainee(name=trainee_name, courses=enrolled_courses))
+            _trainees.append(Trainee(name=trainee_name, shift=trainee_shift, courses=enrolled_courses))
 
     _groups = {}
     for trainee in _trainees:
-        course_key = tuple(sorted(trainee.courses))  # use tuple as key since set is unhashable
-        if course_key not in _groups:
-            _groups[course_key] = {
-                "name": f"G{len(_groups) + 1}",
+        course_key = tuple(sorted(trainee.courses))
+        group_key = tuple(list(course_key) + [trainee.shift])
+        
+        if group_key not in _groups:
+            _groups[group_key] = {
+                "name": f"G{len(_groups) + 1} - {trainee.shift}",
                 "courses": list(course_key),
-                "trainees": []
+                "trainees": [],
+                "shift": trainee.shift,
+                "shift_start_hour": trainee.shift_start_hour
             }
-        _groups[course_key]["trainees"].append(trainee.name)
+
+        _groups[group_key]["trainees"].append(trainee.name)
 
     _groups = [Group(**group) for group in _groups.values()]
 
@@ -171,10 +187,13 @@ def read_trainees(
 
     groups = {
         group.name: {
+            "shift_start_hour": group.shift_start_hour,
             "courses": group.courses,
             "subgroups": {subgroup: len(members) for subgroup, members in (group.subgroup or {}).items()}
         } for group in _groups
     }
+
+    print (groups)
 
     print("Len Trainees:", len(_trainees), "Len Groups:", len(groups))
 

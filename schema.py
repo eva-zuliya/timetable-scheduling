@@ -21,8 +21,15 @@ class Course(BaseModel):
 
 class Trainee(BaseModel):
     name: str
-    shift: Literal["NonShift", "Shift1", "Shift2", "Shift3"] = "NonShift"
+    shift: Literal["Non Shift", "Shift 1", "Shift 2", "Shift 3", "NS"]
     courses: list[str]
+
+    @property
+    def shift_start_hour(self):
+        if self.shift in ["Shift 2", "Shift 3"]:
+            return 4
+        
+        return 0
 
 
 class Group(BaseModel):
@@ -30,6 +37,8 @@ class Group(BaseModel):
     courses: list[str]
     trainees: list[str]
     subgroup: dict[str, list[str]] = None
+    shift: Literal["Non Shift", "Shift 1", "Shift 2", "Shift 3", "NS"]
+    shift_start_hour: Literal[0, 4]
 
     def split_subgroups(self, max_size: int):
         self.subgroup = {}

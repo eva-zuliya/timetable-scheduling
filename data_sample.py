@@ -1,93 +1,155 @@
-from schema import Venue, Trainer, Course, Trainee, Group
 import pandas as pd
-
-# ===============================
-# TIME AND PARAMS
-# ===============================
-DAYS = 10
-HOURS_PER_DAY = 10
-HORIZON = DAYS * HOURS_PER_DAY
-
-MAX_SESSION_LENGTH = 8
-MAX_GROUP_SIZE = 2
+import math
+from schema import Venue, Trainer, Course, Trainee, Group
+from utils import export_groups_courses_to_df, export_groups_trainee_to_df
 
 
-# ===============================
-# VENUES (capacity)
-# ===============================
-_venues = [
-    Venue(name="V1", capacity=5),
-    Venue(name="V2", capacity=5),
-    Venue(name="V3", capacity=5),
-    Venue(name="V4", capacity=5)
-]
+def read_data(params: dict):
+    venues, venue_list = read_venue(
+        file_master_venue=params['file_master_venue']
+    )
 
-venues = {venue.name: venue.capacity for venue in _venues}
-venue_list = list(venues.keys())
+    trainers, eligible = read_trainers(
+        file_master_trainer=params['file_master_trainer'],
+        file_master_course_trainer=params['file_master_course_trainer']
+    )
 
+    courses = read_courses(
+        file_master_course=params['file_master_course'],
+        file_master_course_sequence=params['file_master_course_sequence']
+    )
 
-# ===============================
-# TRAINERS AND ELIGIBILITY
-# ===============================
-_trainers = [
-    Trainer(name="T1", eligible=["C1", "C2"]),
-    Trainer(name="T2", eligible=["C1", "C2", "C3"]),
-]
+    groups = read_trainees(
+        file_master_trainee=params['file_master_trainee'],
+        file_master_course_trainee=params['file_master_course_trainee'],
+        report_name=params['report_name'],
+        minimum_course_participant=params['minimum_course_participant'],
+        maximum_group_size=params['maximum_group_size']
+    )
 
-eligible = {(trainer.name, course): 1 for trainer in _trainers for course in trainer.eligible}
-trainers = [trainer.name for trainer in _trainers]
-
-
-# ===============================
-# COURSES
-# ===============================
-_courses = [
-    Course(name="C1", duration=8, prerequisites=[]),
-    Course(name="C2", duration=4, prerequisites=["C1"]),
-    Course(name="C3", duration=4, prerequisites=["C1", "C2"]),
-]
-
-courses = {
-    course.name: {
-        "dur": course.duration,
-        "prereq": course.prerequisites
-    } for course in _courses
-}
+    return {
+        'days': params['days'],
+        'hours_per_day': params['hours_per_day'],
+        'horizon': params['days'] * params['hours_per_day'],
+        'max_session_length': params['maximum_session_length'],
+        'venues': venues,
+        'venue_list': venue_list,
+        'trainers': trainers,
+        'eligible': eligible,
+        'courses': courses,
+        'groups': groups,
+        'is_considering_shift': params['is_considering_shift']
+    }
 
 
-# ===============================
-# TRAINEE AND GROUPS → SUBGROUPS
-# ===============================
-_trainees = [
-    Trainee(name="E1", courses=["C1", "C2"]),
-    Trainee(name="E2", courses=["C1", "C2"]),
-    Trainee(name="E3", courses=["C1", "C2"]),
-    Trainee(name="E4", courses=["C1", "C2"]),
-    Trainee(name="E5", courses=["C1", "C2"]),
-    Trainee(name="E6", courses=["C1", "C2"]),
-    Trainee(name="E7", courses=["C1", "C2"]),
-    Trainee(name="E8", courses=["C1", "C2", "C3"])
-]
+def read_venue(
+    file_master_venue: str
+):
+    _venues = [
+        Venue(name="V1", capacity=5),
+        Venue(name="V2", capacity=5),
+        Venue(name="V3", capacity=5),
+        Venue(name="V4", capacity=5)
+    ]
 
-_groups = {}
-for trainee in _trainees:
-    course_key = tuple(sorted(trainee.courses))  # use tuple as key since set is unhashable
-    if course_key not in _groups:
-        _groups[course_key] = {
-            "name": "__".join(course_key),
-            "courses": list(course_key),
-            "trainees": []
-        }
-    _groups[course_key]["trainees"].append(trainee.name)
+    venues = {venue.name: venue.capacity for venue in _venues}
+    venue_list = list(venues.keys())
 
-_groups = [Group(**group) for group in _groups.values()]
+    print("Len Venues:", len(venues), "Len Venue List:", len(venue_list))
 
-for group in _groups:
-    group.split_subgroups(MAX_GROUP_SIZE)
+    return venues, venue_list
 
-groups = {
-    group.name: {
-        "courses": group.courses,
-        "subgroups": {subgroup: len(members) for subgroup, members in (group.subgroup or {}).items()}
-    } for group in _groups
-}
+
+def read_trainers(
+    file_master_trainer: str,
+    file_master_course_trainer: str
+):
+    _trainers = [
+        Trainer(name="T1", eligible=["C1", "C2"]),
+        Trainer(name="T2", eligible=["C1", "C2", "C3"]),
+    ]
+
+    eligible = {(trainer.name, course): 1 for trainer in _trainers for course in trainer.eligible}
+    trainers = [trainer.name for trainer in _trainers]
+
+    print("Len Eligible:", len(eligible), "Len Trainers:", len(trainers))
+
+    return trainers, eligible
+
+
+def read_courses(
+    file_master_course: str,
+    file_master_course_sequence: str
+):
+    _courses = [
+        Course(name="C1", duration=8, prerequisites=[]),
+        Course(name="C2", duration=4, prerequisites=["C1"]),
+        Course(name="C3", duration=4, prerequisites=["C1", "C2"]),
+    ]
+
+    courses = {
+        course.name: {
+            "dur": course.duration,
+            "prereq": course.prerequisites
+        } for course in _courses
+    }
+
+    print("Len Courses:", len(courses))
+
+    return courses
+
+
+def read_trainees(
+    file_master_trainee: str,
+    file_master_course_trainee: str,
+    report_name: str = 'report',
+    minimum_course_participant: int = None,
+    maximum_group_size: int = 30
+):
+
+    _trainees = [
+        Trainee(name="E1", courses=["C1", "C2"], shift="Non Shift"),
+        Trainee(name="E2", courses=["C1", "C2"], shift="Non Shift"),
+        Trainee(name="E3", courses=["C1", "C2"], shift="Non Shift"),
+        Trainee(name="E4", courses=["C1", "C2"], shift="Non Shift"),
+        Trainee(name="E5", courses=["C1", "C2"], shift="Non Shift"),
+        Trainee(name="E6", courses=["C1", "C2"], shift="Non Shift"),
+        Trainee(name="E7", courses=["C1", "C2"], shift="Shift 2"),
+        Trainee(name="E8", courses=["C1", "C2", "C3"], shift="Shift 3")
+    ]
+
+    _groups = {}
+    for trainee in _trainees:
+        course_key = tuple(sorted(trainee.courses))
+        group_key = tuple(list(course_key) + [trainee.shift])
+        
+        if group_key not in _groups:
+            _groups[group_key] = {
+                "name": f"G{len(_groups) + 1} - {trainee.shift}",
+                "courses": list(course_key),
+                "trainees": [],
+                "shift": trainee.shift,
+                "shift_start_hour": trainee.shift_start_hour
+            }
+        _groups[group_key]["trainees"].append(trainee.name)
+
+    _groups = [Group(**group) for group in _groups.values()]
+
+    for group in _groups:
+        group.split_subgroups(maximum_group_size)
+
+    export_groups_trainee_to_df(groups=_groups, report_name=report_name)
+    export_groups_courses_to_df(groups=_groups, report_name=report_name)
+
+    groups = {
+        group.name: {
+            "shift_start_hour": group.shift_start_hour,
+            "courses": group.courses,
+            "subgroups": {subgroup: len(members) for subgroup, members in (group.subgroup or {}).items()}
+        } for group in _groups
+    }
+
+    print("Len Trainees:", len(_trainees), "Len Groups:", len(groups))
+    print(groups)
+
+    return groups
