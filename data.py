@@ -1,5 +1,7 @@
 import pandas as pd
 import math
+import json
+from pygments import highlight, lexers, formatters
 from schema import Venue, Trainer, Course, Trainee, Group
 from utils import export_groups_courses_to_df, export_groups_trainee_to_df
 
@@ -26,6 +28,8 @@ def read_data(params: dict):
         minimum_course_participant=params['minimum_course_participant'],
         maximum_group_size=params['maximum_group_size']
     )
+
+    print("\n", highlight(json.dumps(groups, indent=4), lexers.JsonLexer(), formatters.TerminalFormatter()), "\n")
 
     return {
         'days': params['days'],
@@ -110,7 +114,7 @@ def read_courses(
         # Get prerequisites for this course from prerequisite dataframe
         prereqs = _df_prereq[_df_prereq['course_name'] == course_name]
         prerequisites = [] if prereqs.empty else prereqs['prerequisite_course_name'].tolist()
-        
+
         _courses.append(Course(name=course_name, duration=duration, prerequisites=prerequisites))
 
     courses = {
@@ -191,8 +195,6 @@ def read_trainees(
             "subgroups": {subgroup: len(members) for subgroup, members in (group.subgroup or {}).items()}
         } for group in _groups
     }
-
-    print (groups)
 
     print("Len Trainees:", len(_trainees), "Len Groups:", len(groups))
 
