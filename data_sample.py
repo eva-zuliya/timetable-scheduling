@@ -133,7 +133,8 @@ def read_trainees(
                 "courses": list(course_key),
                 "trainees": [],
                 "shift": trainee.shift,
-                "shift_start_hour": trainee.shift_start_hour
+                "shift_start_hour": trainee.shift_start_hour,
+                "shift_end_hour": trainee.shift_end_hour
             }
         _groups[group_key]["trainees"].append(trainee.name)
 

@@ -1,6 +1,6 @@
 import pandas as pd
-from data import read_data
-# from data_sample import read_data
+# from data import read_data
+from data_sample import read_data
 from ortools.sat.python import cp_model
 from collections import defaultdict
 
@@ -66,6 +66,8 @@ def run_solver(params: dict):
                     hour_in_day = model.NewIntVar(0, HOURS_PER_DAY-1, f"hour_{g}_{u}_{c}")
                     model.Add(hour_in_day == start[g,u,c] - (day[g,u,c] * HOURS_PER_DAY))
                     model.Add(hour_in_day >= groups[g]["shift_start_hour"])
+                    model.Add(hour_in_day + course_duration <= groups[g]["shift_end_hour"])
+
 
                 venue_vars = []
                 for v in venue_list:
