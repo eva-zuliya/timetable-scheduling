@@ -110,9 +110,8 @@ def read_courses(
         # Get prerequisites for this course from prerequisite dataframe
         prereqs = _df_prereq[_df_prereq['course_name'] == course_name]
         prerequisites = [] if prereqs.empty else prereqs['prerequisite_course_name'].tolist()
-
-        if prerequisites:
-            _courses.append(Course(name=course_name, duration=duration, prerequisites=prerequisites))
+        
+        _courses.append(Course(name=course_name, duration=duration, prerequisites=prerequisites))
 
     courses = {
         course.name: {

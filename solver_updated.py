@@ -107,47 +107,78 @@ def run_solver(params: dict):
     # ===============================
     # SHARED SUBGROUP
     # ===============================
-    # Allow subgroups to share venue session for same course (even across groups)
     same_session = {}
+
     for c in courses:
         for k in sessions[c]:
-            # Collect all (g, u) pairs that take this course
-            gu_pairs = [(g, u) for g in groups for u in groups[g]["subgroups"] if c in groups[g]["courses"]]
-            
-            for i, (g1, u1) in enumerate(gu_pairs):
-                for (g2, u2) in gu_pairs[i+1:]:
-                    same_session[(g1,u1,g2,u2,c,k)] = model.NewBoolVar(f"same_{g1}_{u1}_{g2}_{u2}_{c}_{k}")
-                    
-                    # same_session = 1 IFF same start AND same venue AND same trainer
-                    same_start = model.NewBoolVar(f"same_start_{g1}_{u1}_{g2}_{u2}_{c}_{k}")
-                    model.Add(start[g1,u1,c,k] == start[g2,u2,c,k]).OnlyEnforceIf(same_start)
-                    model.Add(start[g1,u1,c,k] != start[g2,u2,c,k]).OnlyEnforceIf(same_start.Not())
-                    
-                    same_venue = model.NewBoolVar(f"same_venue_{g1}_{u1}_{g2}_{u2}_{c}_{k}")
-                    venue_matches = []
-                    for v in venue_list:
-                        both_v = model.NewBoolVar(f"both_{g1}_{u1}_{g2}_{u2}_{c}_{k}_{v}")
-                        model.AddMultiplicationEquality(both_v, [use[g1,u1,c,k,v], use[g2,u2,c,k,v]])
-                        venue_matches.append(both_v)
-                    model.Add(sum(venue_matches) == 1).OnlyEnforceIf(same_venue)
-                    model.Add(sum(venue_matches) == 0).OnlyEnforceIf(same_venue.Not())
-                    
-                    same_trainer = model.NewBoolVar(f"same_trainer_{g1}_{u1}_{g2}_{u2}_{c}_{k}")
-                    trainer_matches = []
-                    for t in trainers:
-                        if (g1,u1,c,t) in y and (g2,u2,c,t) in y:
-                            both_t = model.NewBoolVar(f"both_t_{g1}_{u1}_{g2}_{u2}_{c}_{k}_{t}")
-                            model.AddMultiplicationEquality(both_t, [y[g1,u1,c,t], y[g2,u2,c,t]])
-                            trainer_matches.append(both_t)
-                    if trainer_matches:
-                        model.Add(sum(trainer_matches) >= 1).OnlyEnforceIf(same_trainer)
-                        model.Add(sum(trainer_matches) == 0).OnlyEnforceIf(same_trainer.Not())
-                    else:
-                        model.Add(same_trainer == 0)
-                    
-                    # same_session = same_start AND same_venue AND same_trainer
-                    model.AddBoolAnd([same_start, same_venue, same_trainer]).OnlyEnforceIf(same_session[(g1,u1,g2,u2,c,k)])
-                    model.AddBoolOr([same_start.Not(), same_venue.Not(), same_trainer.Not()]).OnlyEnforceIf(same_session[(g1,u1,g2,u2,c,k)].Not())
+            gu = [(g,u) for g in groups for u in groups[g]["subgroups"]
+                if c in groups[g]["courses"]]
+
+            for i, (g1,u1) in enumerate(gu):
+                for g2,u2 in gu[i+1:]:
+
+                    ss = model.NewBoolVar(
+                        f"same_{g1}_{u1}_{g2}_{u2}_{c}_{k}"
+                    )
+                    same_session[g1,u1,g2,u2,c,k] = ss
+
+                    # -------------------
+                    # SAME START TIME
+                    # -------------------
+                    same_start = model.NewBoolVar(
+                        f"ss_{g1}_{u1}_{g2}_{u2}_{c}_{k}"
+                    )
+                    model.Add(
+                        start[g1,u1,c,k] == start[g2,u2,c,k]
+                    ).OnlyEnforceIf(same_start)
+                    model.Add(
+                        start[g1,u1,c,k] != start[g2,u2,c,k]
+                    ).OnlyEnforceIf(same_start.Not())
+
+                    # -------------------
+                    # SAME VENUE
+                    # -------------------
+                    same_venue = model.NewBoolVar(
+                        f"sv_{g1}_{u1}_{g2}_{u2}_{c}_{k}"
+                    )
+                    model.Add(
+                        sum(use[g1,u1,c,k,v] + use[g2,u2,c,k,v]
+                            for v in venue_list) == 2
+                    ).OnlyEnforceIf(same_venue)
+                    model.Add(
+                        sum(use[g1,u1,c,k,v] + use[g2,u2,c,k,v]
+                            for v in venue_list) != 2
+                    ).OnlyEnforceIf(same_venue.Not())
+
+                    # -------------------
+                    # SAME TRAINER
+                    # -------------------
+                    same_trainer = model.NewBoolVar(
+                        f"st_{g1}_{u1}_{g2}_{u2}_{c}_{k}"
+                    )
+                    model.Add(
+                        sum(y[g1,u1,c,t] + y[g2,u2,c,t]
+                            for t in trainers
+                            if (g1,u1,c,t) in y and (g2,u2,c,t) in y) == 2
+                    ).OnlyEnforceIf(same_trainer)
+                    model.Add(
+                        sum(y[g1,u1,c,t] + y[g2,u2,c,t]
+                            for t in trainers
+                            if (g1,u1,c,t) in y and (g2,u2,c,t) in y) != 2
+                    ).OnlyEnforceIf(same_trainer.Not())
+
+                    # -------------------
+                    # SAME SESSION ⇔ all three
+                    # -------------------
+                    model.AddBoolAnd(
+                        [same_start, same_venue, same_trainer]
+                    ).OnlyEnforceIf(ss)
+
+                    model.AddBoolOr(
+                        [same_start.Not(),
+                        same_venue.Not(),
+                        same_trainer.Not()]
+                    ).OnlyEnforceIf(ss.Not())
 
 
     # ===============================
@@ -200,47 +231,23 @@ def run_solver(params: dict):
     # ===============================
     # Trainer can teach multiple subgroups simultaneously ONLY if:
     # - Same course AND same session AND same venue AND same time
+    # for t in trainers:
+    #     for v in venue_list:
+    #         model.AddNoOverlap(
+    #             interval[g,u,c,k,v]
+    #             for g in groups
+    #             for u in groups[g]["subgroups"]
+    #             for c in groups[g]["courses"]
+    #             for k in sessions[c]
+    #             if (g,u,c,t) in y
+    #         )
+
     for t in trainers:
-        teaching_slots = [(g, u, c, k) for g in groups for u in groups[g]["subgroups"] 
-                        for c in groups[g]["courses"] for k in sessions[c] if (g, u, c, t) in y]
-        
-        for i, (g1, u1, c1, k1) in enumerate(teaching_slots):
-            for g2, u2, c2, k2 in teaching_slots[i+1:]:
-                # Check if they can share (same course, same session)
-                can_share = (c1 == c2 and k1 == k2)
-                
-                if can_share:
-                    # They can only overlap if they share the same venue
-                    both_taught = model.NewBoolVar(f"both_{g1}_{u1}_{g2}_{u2}_{c1}_{k1}_{t}")
-                    model.AddMultiplicationEquality(both_taught, [y[g1, u1, c1, t], y[g2, u2, c2, t]])
-                    
-                    # Check if same venue
-                    same_venue_vars = []
-                    for v in venue_list:
-                        both_v = model.NewBoolVar(f"both_v_{g1}_{u1}_{g2}_{u2}_{c1}_{k1}_{v}_{t}")
-                        model.AddMultiplicationEquality(both_v, [use[g1, u1, c1, k1, v], use[g2, u2, c2, k2, v]])
-                        same_venue_vars.append(both_v)
-                    
-                    same_venue = model.NewBoolVar(f"same_venue_{g1}_{u1}_{g2}_{u2}_{c1}_{k1}_{t}")
-                    model.Add(sum(same_venue_vars) >= 1).OnlyEnforceIf(same_venue)
-                    model.Add(sum(same_venue_vars) == 0).OnlyEnforceIf(same_venue.Not())
-                    
-                    # If both taught but NOT same venue, they must not overlap
-                    must_not_overlap = model.NewBoolVar(f"no_overlap_{g1}_{u1}_{g2}_{u2}_{t}")
-                    model.AddBoolAnd([both_taught, same_venue.Not()]).OnlyEnforceIf(must_not_overlap)
-                    model.AddBoolOr([both_taught.Not(), same_venue]).OnlyEnforceIf(must_not_overlap.Not())
-                    
-                    order = model.NewBoolVar(f"order_{g1}_{u1}_{g2}_{u2}_{t}")
-                    model.Add(end[g1, u1, c1, k1] <= start[g2, u2, c2, k2]).OnlyEnforceIf([must_not_overlap, order])
-                    model.Add(end[g2, u2, c2, k2] <= start[g1, u1, c1, k1]).OnlyEnforceIf([must_not_overlap, order.Not()])
-                else:
-                    # Different course or session - must not overlap
-                    both_taught = model.NewBoolVar(f"both_{g1}_{u1}_{c1}_{k1}_{g2}_{u2}_{c2}_{k2}_{t}")
-                    model.AddMultiplicationEquality(both_taught, [y[g1, u1, c1, t], y[g2, u2, c2, t]])
-                    
-                    order = model.NewBoolVar(f"order_{g1}_{u1}_{g2}_{u2}_{t}")
-                    model.Add(end[g1, u1, c1, k1] <= start[g2, u2, c2, k2]).OnlyEnforceIf([both_taught, order])
-                    model.Add(end[g2, u2, c2, k2] <= start[g1, u1, c1, k1]).OnlyEnforceIf([both_taught, order.Not()])
+        model.AddNoOverlap(
+            trainer_interval[g,u,c,k,v,t]
+            for (g,u,c,k,v,tt) in trainer_interval
+            if tt == t
+        )
 
 
     # ===============================
@@ -269,9 +276,12 @@ def run_solver(params: dict):
                 for c in groups[g]["courses"]:
                     for k in sessions[c]:
                         b = model.NewBoolVar(f"is_{g}_{u}_{c}_{k}_day{d}")
+
                         model.Add(day[g,u,c,k] == d).OnlyEnforceIf(b)
                         model.Add(day[g,u,c,k] != d).OnlyEnforceIf(b.Not())
+
                         load.append(b * session_len[c,k])
+
                 model.Add(sum(load) <= MAX_SESSION_LENGTH)
 
 
