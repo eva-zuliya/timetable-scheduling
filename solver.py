@@ -145,16 +145,17 @@ def run_solver(params: dict):
             for c in groups[g]["courses"]:
                 for v in venue_list:
                     for t in trainers:
-                        trainer_active = model.NewBoolVar(f"train_active_{g}_{u}_{c}_{v}_{t}")
-                        model.AddMultiplicationEquality(trainer_active, [y[g, u, c, t], use[g, u, c, v]])
+                        if eligible.get((t, c), 0):
+                            trainer_active = model.NewBoolVar(f"train_active_{g}_{u}_{c}_{v}_{t}")
+                            model.AddMultiplicationEquality(trainer_active, [y[g, u, c, t], use[g, u, c, v]])
 
-                        trainer_interval[g, u, c, v, t] = model.NewOptionalIntervalVar(
-                            start[g,u,c],
-                            courses[c]['dur'],
-                            end[g,u,c],
-                            trainer_active,
-                            f"trainer_iv_{g}_{u}_{c}_{v}_{t}"
-                        )
+                            trainer_interval[g, u, c, v, t] = model.NewOptionalIntervalVar(
+                                start[g,u,c],
+                                courses[c]['dur'],
+                                end[g,u,c],
+                                trainer_active,
+                                f"trainer_iv_{g}_{u}_{c}_{v}_{t}"
+                            )
 
     # For each trainer, group intervals by their "session signature":
     # (course, start time, venue assigned, trainer).
