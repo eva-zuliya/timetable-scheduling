@@ -67,12 +67,11 @@ def run_solver(params: dict):
                 model.Add(day[g,u,c] == end_day)
 
                 if is_considering_shift:
-                    # enforce shift start hour
+                    # enforce shift start and end hour
                     hour_in_day = model.NewIntVar(0, HOURS_PER_DAY-1, f"hour_{g}_{u}_{c}")
                     model.Add(hour_in_day == start[g,u,c] - (day[g,u,c] * HOURS_PER_DAY))
                     model.Add(hour_in_day >= groups[g]["shift_start_hour"])
                     model.Add(hour_in_day + course_duration <= groups[g]["shift_end_hour"])
-
 
                 venue_vars = []
                 for v in venue_list:
@@ -86,7 +85,18 @@ def run_solver(params: dict):
                     )
                     venue_vars.append(use[g,u,c,v])
 
+                # (g, u, c) must be assigned to exactly one venue for this class
                 model.Add(sum(venue_vars) == 1)
+
+                # Ensure (g, u) cannot be scheduled for multiple classes at overlapping times (in any venues)
+                # (g, u) can only be in one class at a time, i.e., all intervals for this subgroup across its courses are NoOverlap
+                # This is critical for scheduling because it prevents the same subgroup from being double-booked.
+                
+                group_interval = {}
+                group_interval.setdefault((g, u), []).extend([interval[g,u,c,v] for v in venue_list])
+                for gu, gu_intervals in group_interval.items():
+                      model.AddNoOverlap(gu_intervals)
+
 
 
     # ===============================
