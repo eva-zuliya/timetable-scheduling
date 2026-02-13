@@ -16,14 +16,15 @@ params = {
     'minimum_course_participant': 30,
     'maximum_group_size': 2,
 
-    'days': 19,
+    'start_date': '2026-02-16',
+    'days': 4,
     'hours_per_day': 8,
     'maximum_session_length': 8,
 
     'max_time_in_seconds': 900,
     'num_search_workers': 8,
 
-    'is_considering_shift': False
+    'is_considering_shift': True
 }
 
 

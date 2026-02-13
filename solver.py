@@ -11,7 +11,7 @@ def run_solver(params: dict):
     DAYS = data['days']
     HOURS_PER_DAY = data['hours_per_day']
     HORIZON = data['horizon']
-    MAX_SESSION_LENGTH = data['max_session_length']
+    MAX_SESSION_LENGTH = data['max_session_length']+1
     venues = data['venues']
     venue_list = data['venue_list']
     trainers = data['trainers']
@@ -19,6 +19,7 @@ def run_solver(params: dict):
     courses = data['courses']
     groups = data['groups']
     is_considering_shift = data['is_considering_shift']
+    weekend_list = data['weekend_list']
 
 
     model = cp_model.CpModel()
@@ -55,6 +56,10 @@ def run_solver(params: dict):
 
                 day[g,u,c] = model.NewIntVar(0, DAYS-1, f"day_{g}_{u}_{c}")
                 model.AddDivisionEquality(day[g,u,c], start[g,u,c], HOURS_PER_DAY)
+
+                if groups[g]["cycle"] == "WDays" and weekend_list:
+                    for wd in weekend_list:
+                        model.Add(day[g,u,c] != wd)
 
                 # enforce same-day (no crossing)
                 end_day = model.NewIntVar(0, DAYS-1, f"endday_{g}_{u}_{c}")

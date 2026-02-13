@@ -1,8 +1,9 @@
+import calendar
 import pandas as pd
 import math
 import json
 from pygments import highlight, lexers, formatters
-from schema import Venue, Trainer, Course, Trainee, Group
+from schema import Venue, Trainer, Course, Trainee, Group, Calendar
 from utils import export_groups_courses_to_df, export_groups_trainee_to_df
 
 
@@ -29,6 +30,11 @@ def read_data(params: dict):
         maximum_group_size=params['maximum_group_size']
     )
 
+    weekend_list = read_calendar(
+        start_date=params['start_date'],
+        days=params['days']
+    )
+
     print("\n", highlight(json.dumps(groups, indent=4), lexers.JsonLexer(), formatters.TerminalFormatter()), "\n")
 
     return {
@@ -42,7 +48,8 @@ def read_data(params: dict):
         'eligible': eligible,
         'courses': courses,
         'groups': groups,
-        'is_considering_shift': params['is_considering_shift']
+        'is_considering_shift': params['is_considering_shift'],
+        'weekend_list': weekend_list
     }
 
 
@@ -162,21 +169,29 @@ def read_trainees(
         enrolled_courses = _df_enrollment[_df_enrollment['employee_id'] == trainee_name]['course_name'].tolist()
 
         if enrolled_courses:  # Only include trainees with at least one course
-            _trainees.append(Trainee(name=trainee_name, shift=trainee_shift, courses=enrolled_courses))
+            _trainees.append(
+                Trainee(
+                    name=trainee_name,
+                    shift=trainee_shift,
+                    courses=enrolled_courses,
+                    cycle="WDays"  # Later should be based on the master employee data
+                )
+            )
 
     _groups = {}
     for trainee in _trainees:
         course_key = tuple(sorted(trainee.courses))
-        group_key = tuple(list(course_key) + [trainee.shift])
+        group_key = tuple(list(course_key) + [trainee.shift, trainee.cycle])
         
         if group_key not in _groups:
             _groups[group_key] = {
-                "name": f"G{len(_groups) + 1} - {trainee.shift}",
+                "name": f"G{len(_groups) + 1} - {trainee.shift} - {trainee.cycle}",
                 "courses": list(course_key),
                 "trainees": [],
                 "shift": trainee.shift,
                 "shift_start_hour": trainee.shift_start_hour,
-                "shift_end_hour": trainee.shift_end_hour
+                "shift_end_hour": trainee.shift_end_hour,
+                "cycle": trainee.cycle
             }
 
         _groups[group_key]["trainees"].append(trainee.name)
@@ -192,6 +207,8 @@ def read_trainees(
     groups = {
         group.name: {
             "shift_start_hour": group.shift_start_hour,
+            "shift_end_hour": group.shift_end_hour,
+            "cycle": group.cycle,
             "courses": group.courses,
             "subgroups": {subgroup: len(members) for subgroup, members in (group.subgroup or {}).items()}
         } for group in _groups
@@ -200,3 +217,15 @@ def read_trainees(
     print("Len Trainees:", len(_trainees), "Len Groups:", len(groups))
 
     return groups
+
+
+def read_calendar(
+    start_date: str,
+    days: int
+):
+    calendar = Calendar(
+        start_date=start_date,
+        days = days
+    )
+
+    return calendar.weekend_index
