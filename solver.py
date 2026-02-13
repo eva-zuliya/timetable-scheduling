@@ -100,7 +100,7 @@ def run_solver(params: dict):
             for c in groups[g]["courses"]:
                 for v in venue_list:
                     intervals_for_gu.append(interval[g, u, c, v])
-                    
+
             model.AddNoOverlap(intervals_for_gu)
 
     # ===============================
@@ -279,35 +279,36 @@ def run_solver(params: dict):
     # first need to count how many gu taking each course
     # then for each prerequisite pair, ensure that the total number of sessions of the prerequisite course
     # that start before the earliest session of the dependent course is at least the number of gu taking the dependent course
-    course_gu_count = defaultdict(int)
-    for g in groups:
-        for u in groups[g]["subgroups"]:
-            for c in groups[g]["courses"]:
-                course_gu_count[c] += 1
-    
-    for c, info in courses.items():
-        for prereq in info["prereq"]:
-            # Get all (g,u) taking c and prereq
-            gu_c = [(g, u) for g in groups for u in groups[g]["subgroups"] if c in groups[g]["courses"]]
-            gu_prereq = [(g, u) for g in groups for u in groups[g]["subgroups"] if prereq in groups[g]["courses"]]
+    if params['is_using_global_sequence']:
+        course_gu_count = defaultdict(int)
+        for g in groups:
+            for u in groups[g]["subgroups"]:
+                for c in groups[g]["courses"]:
+                    course_gu_count[c] += 1
+        
+        for c, info in courses.items():
+            for prereq in info["prereq"]:
+                # Get all (g,u) taking c and prereq
+                gu_c = [(g, u) for g in groups for u in groups[g]["subgroups"] if c in groups[g]["courses"]]
+                gu_prereq = [(g, u) for g in groups for u in groups[g]["subgroups"] if prereq in groups[g]["courses"]]
 
-            if not gu_c or not gu_prereq:
-                continue  # If no one takes the course or prereq, skip
+                if not gu_c or not gu_prereq:
+                    continue  # If no one takes the course or prereq, skip
 
-            # Earliest start of c across all (g,u)
-            earliest_c = model.NewIntVar(0, HORIZON, f"earliest_{c}")
-            model.AddMinEquality(earliest_c, [start[g,u,c] for (g,u) in gu_c])
+                # Earliest start of c across all (g,u)
+                earliest_c = model.NewIntVar(0, HORIZON, f"earliest_{c}")
+                model.AddMinEquality(earliest_c, [start[g,u,c] for (g,u) in gu_c])
 
-            # Count how many sessions of prereq start before earliest_c
-            prereq_before_c = []
-            for (g,u) in gu_prereq:
-                b = model.NewBoolVar(f"prereq_{prereq}_before_{c}_{g}_{u}")
-                model.Add(start[g,u,prereq] < earliest_c).OnlyEnforceIf(b)
-                model.Add(start[g,u,prereq] >= earliest_c).OnlyEnforceIf(b.Not())
-                prereq_before_c.append(b)
+                # Count how many sessions of prereq start before earliest_c
+                prereq_before_c = []
+                for (g,u) in gu_prereq:
+                    b = model.NewBoolVar(f"prereq_{prereq}_before_{c}_{g}_{u}")
+                    model.Add(start[g,u,prereq] < earliest_c).OnlyEnforceIf(b)
+                    model.Add(start[g,u,prereq] >= earliest_c).OnlyEnforceIf(b.Not())
+                    prereq_before_c.append(b)
 
-            # Total sessions of prereq before earliest_c must be at least course_gu_count[c]
-            model.Add(sum(prereq_before_c) >= course_gu_count[c])
+                # Total sessions of prereq before earliest_c must be at least course_gu_count[c]
+                model.Add(sum(prereq_before_c) >= course_gu_count[c])
 
 
     # ===============================
