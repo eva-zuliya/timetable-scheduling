@@ -92,15 +92,28 @@ def run_solver(params: dict):
                 # (g, u, c) must be assigned to exactly one venue for this class
                 model.Add(sum(venue_vars) == 1)
 
-    # Ensure no subgroup (g,u) is scheduled for multiple classes at overlapping times (i.e., no double-booking).
-    # For each subgroup (g, u), collect all intervals for all its courses and venues, and add NoOverlap.
+    # Ensure that each subgroup (g,u) at any point in time is assigned to at most one course, one venue, and one trainer.
+    # That is, for each subgroup, the intervals for all course-venue-trainer assignments must not overlap.
     for g in groups:
         for u in groups[g]["subgroups"]:
             intervals_for_gu = []
             for c in groups[g]["courses"]:
                 for v in venue_list:
-                    intervals_for_gu.append(interval[g, u, c, v])
-
+                    for t in trainers:
+                        # Only add if this course can be assigned this trainer (i.e., y[g,u,c,t] exists)
+                        if (g, u, c, t) in y:
+                            # Build the optional interval with usage var being AND of use[g,u,c,v] and y[g,u,c,t]
+                            assigned = model.NewBoolVar(f"assigned_{g}_{u}_{c}_{v}_{t}")
+                            model.AddMultiplicationEquality(assigned, [use[g, u, c, v], y[g, u, c, t]])
+                            intervals_for_gu.append(
+                                model.NewOptionalIntervalVar(
+                                    start[g, u, c],
+                                    courses[c]['dur'],
+                                    end[g, u, c],
+                                    assigned,
+                                    f"int_{g}_{u}_{c}_{v}_{t}"
+                                )
+                            )
             model.AddNoOverlap(intervals_for_gu)
 
     # ===============================
