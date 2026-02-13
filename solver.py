@@ -1,11 +1,15 @@
 import pandas as pd
-# from data import read_data
-from data_sample import read_data
 from ortools.sat.python import cp_model
 from collections import defaultdict
 
 
 def run_solver(params: dict):
+
+    if params['is_using_sample_data']:
+        from data import read_data
+    else:
+        from data_sample import read_data
+
     data = read_data(params)
 
     DAYS = data['days']
