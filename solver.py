@@ -92,16 +92,16 @@ def run_solver(params: dict):
                 # (g, u, c) must be assigned to exactly one venue for this class
                 model.Add(sum(venue_vars) == 1)
 
-                # Ensure (g, u) cannot be scheduled for multiple classes at overlapping times (in any venues)
-                # (g, u) can only be in one class at a time, i.e., all intervals for this subgroup across its courses are NoOverlap
-                # This is critical for scheduling because it prevents the same subgroup from being double-booked.
-                
-                group_interval = {}
-                group_interval.setdefault((g, u), []).extend([interval[g,u,c,v] for v in venue_list])
-                for gu, gu_intervals in group_interval.items():
-                      model.AddNoOverlap(gu_intervals)
-
-
+    # Ensure no subgroup (g,u) is scheduled for multiple classes at overlapping times (i.e., no double-booking).
+    # For each subgroup (g, u), collect all intervals for all its courses and venues, and add NoOverlap.
+    for g in groups:
+        for u in groups[g]["subgroups"]:
+            intervals_for_gu = []
+            for c in groups[g]["courses"]:
+                for v in venue_list:
+                    intervals_for_gu.append(interval[g, u, c, v])
+                    
+            model.AddNoOverlap(intervals_for_gu)
 
     # ===============================
     # SHARED SUBGROUP

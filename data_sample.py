@@ -125,7 +125,7 @@ def read_trainees(
         Trainee(name="E5", courses=["C1", "C2"], shift="Non Shift", cycle="WDays"),
         Trainee(name="E6", courses=["C1", "C2"], shift="Non Shift", cycle="WDays"),
         Trainee(name="E7", courses=["C1", "C2"], shift="Shift 2", cycle="WEnd"),
-        Trainee(name="E8", courses=["C1", "C2", "C3"], shift="Shift 3", cycle="WEnd")
+        Trainee(name="E8", courses=["C1", "C2", "C3"], shift="Shift 2", cycle="WEnd")
     ]
 
     _groups = {}
