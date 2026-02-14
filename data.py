@@ -94,10 +94,10 @@ def read_trainers(
         trainer_name = trainer_row['trainer_name']
         
         # Get eligible courses for this trainer from eligibility dataframe
-        eligible_courses = _df_eligible[_df_eligible['trainer_id'] == trainer_id]['course_name'].tolist()
+        eligible_courses = _df_eligible[_df_eligible['trainer_id'] == trainer_id]['course_name'].drop_duplicates().tolist()
 
         if eligible_courses:  # Only include trainers with at least one eligible course
-            _trainers.append(Trainer(name=trainer_name, eligible=eligible_courses))
+            _trainers.append(Trainer(name=trainer_id, eligible=eligible_courses))
 
     eligible = {(trainer.name, course): 1 for trainer in _trainers for course in trainer.eligible}
     trainers = [trainer.name for trainer in _trainers]
@@ -132,7 +132,7 @@ def read_courses(
 
         # Get prerequisites for this course from prerequisite dataframe
         prereqs = _df_prereq[_df_prereq['course_name'] == course_name]
-        prerequisites = [] if prereqs.empty else prereqs['prerequisite_course_name'].tolist()
+        prerequisites = [] if prereqs.empty else prereqs['prerequisite_course_name'].drop_duplicates().tolist()
 
         _courses.append(Course(name=course_name, stream=course_stream, duration=duration, prerequisites=prerequisites))
 
@@ -189,7 +189,7 @@ def read_trainees(
             trainee_shift = "NS"
 
         # Get courses for this trainee from enrollment dataframe
-        enrolled_courses = _df_enrollment[_df_enrollment['employee_id'] == trainee_name]['course_name'].tolist()
+        enrolled_courses = _df_enrollment[_df_enrollment['employee_id'] == trainee_name]['course_name'].drop_duplicates().tolist()
 
         if enrolled_courses:  # Only include trainees with at least one course
             _trainees.append(
