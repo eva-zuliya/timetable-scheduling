@@ -48,7 +48,7 @@ def read_data(params: dict):
         'eligible': eligible,
         'courses': courses,
         'groups': groups,
-        'groups_trainee': group_trainee,
+        'groups_trainee': groups_trainee,
         'is_considering_shift': params['is_considering_shift'],
         'calendar': calendar,
         'calendar': calendar,
