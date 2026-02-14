@@ -329,21 +329,22 @@ def run_solver(params: dict):
 
             for course in G[group]["courses"]:
                 for prereq in C[course]["prereq"]:
+                    
+                    if course in S and prereq in S:
+                        for s1 in S[prereq]:
+                            if (group, subgroup, prereq, s1) in assign:
 
-                    for s1 in S[prereq]:
-                        if (group, subgroup, prereq, s1) in assign:
+                                for s2 in S[course]:
+                                    if (group, subgroup, course, s2) in assign:
 
-                            for s2 in S[course]:
-                                if (group, subgroup, prereq, s2) in assign:
-
-                                    model.Add(
-                                        start_session[prereq, s1] < start_session[course, s2]
-                                    ).OnlyEnforceIf(
-                                        [
-                                            assign[group, subgroup, prereq, s1],
-                                            assign[group, subgroup, course, s2],
-                                        ]
-                                    )
+                                        model.Add(
+                                            start_session[prereq, s1] < start_session[course, s2]
+                                        ).OnlyEnforceIf(
+                                            [
+                                                assign[group, subgroup, prereq, s1],
+                                                assign[group, subgroup, course, s2],
+                                            ]
+                                        )
 
 
     # ===============================
