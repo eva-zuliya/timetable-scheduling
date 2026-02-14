@@ -2,7 +2,7 @@ import pandas as pd
 import math
 import json
 from pygments import highlight, lexers, formatters
-from schema import Venue, Trainer, Course, Trainee, Group
+from schema import Venue, Trainer, Course, Trainee, Group, Calendar
 from utils import export_groups_courses_to_df, export_groups_trainee_to_df
 
 
@@ -21,7 +21,7 @@ def read_data(params: dict):
         file_master_course_sequence=params['file_master_course_sequence']
     )
 
-    groups = read_trainees(
+    groups, group_trainee = read_trainees(
         file_master_trainee=params['file_master_trainee'],
         file_master_course_trainee=params['file_master_course_trainee'],
         report_name=params['report_name'],
@@ -29,7 +29,10 @@ def read_data(params: dict):
         maximum_group_size=params['maximum_group_size']
     )
 
-    weekend_list = [0,1]
+    calendar, weekend_list = read_calendar(
+        start_date=params['start_date'],
+        days=params['days']
+    )
 
     print("\n", highlight(json.dumps(groups, indent=4), lexers.JsonLexer(), formatters.TerminalFormatter()), "\n")
 
@@ -44,7 +47,9 @@ def read_data(params: dict):
         'eligible': eligible,
         'courses': courses,
         'groups': groups,
+        'groups_trainee': group_trainee,
         'is_considering_shift': params['is_considering_shift'],
+        'calendar': calendar,
         'weekend_list': weekend_list
     }
 
@@ -151,8 +156,8 @@ def read_trainees(
     for group in _groups:
         group.split_subgroups(maximum_group_size)
 
-    export_groups_trainee_to_df(groups=_groups, report_name=report_name)
-    export_groups_courses_to_df(groups=_groups, report_name=report_name)
+    _df_group_trainee = export_groups_trainee_to_df(groups=_groups, report_name=report_name)
+    _df_group_courses = export_groups_courses_to_df(groups=_groups, report_name=report_name)
 
     groups = {
         group.name: {
@@ -166,4 +171,16 @@ def read_trainees(
 
     print("Len Trainees:", len(_trainees), "Len Groups:", len(groups))
 
-    return groups
+    return groups, _df_group_trainee
+
+
+def read_calendar(
+    start_date: str,
+    days: int
+):
+    calendar = Calendar(
+        start_date=start_date,
+        days = days
+    )
+
+    return calendar, calendar.weekend_index

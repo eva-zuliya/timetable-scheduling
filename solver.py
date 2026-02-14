@@ -1,6 +1,7 @@
 import pandas as pd
 from ortools.sat.python import cp_model
-from collections import defaultdict
+from utils import hour_index_to_time
+import datetime
 
 
 def run_solver(params: dict):
@@ -22,400 +23,419 @@ def run_solver(params: dict):
     eligible = data['eligible']
     courses = data['courses']
     groups = data['groups']
+    groups_trainee = data['groups_trainee']
     is_considering_shift = data['is_considering_shift']
+    calendar = data['calendar']
     weekend_list = data['weekend_list']
 
 
     model = cp_model.CpModel()
 
     # ===============================
-    # TRAINER ASSIGNMENT (group-subgroup-course)
+    # SETS
     # ===============================
-    y = {}
-    for g in groups:
-        for u in groups[g]["subgroups"]:
-            for c in groups[g]["courses"]:
-                y_vars = []
-                for t in trainers:
-                    if eligible.get((t, c), 0):
-                        y[g,u,c,t] = model.NewBoolVar(f"y_{g}_{u}_{c}_{t}")
-                        y_vars.append(y[g,u,c,t])
-                model.Add(sum(y_vars) == 1)
+    G = groups
+    T = trainers
+    V = venue_list
+    C = courses
+    D = DAYS
 
 
     # ===============================
-    # INTERVAL VARIABLES
+    # SESSION INDEX
     # ===============================
-    start, end, day = {}, {}, {}
-    use, interval = {}, {}
+    # For each course, make a session for every subgroup in every group that takes that course.
+    S = {}
+    for course in C:
+        max_num_sessions = 0
+        for group in G:
+            if course in G[group]["courses"]:
+                max_num_sessions += len(G[group]["subgroups"])  # Each subgroup in this group needs a session for this course
 
-    for g in groups:
-        for u in groups[g]["subgroups"]:
-            for c in groups[g]["courses"]:  # Only iterate over courses that the subgroup actually takes
-                course_duration = courses[c]['dur']
+        S[course] = list(range(max_num_sessions))
 
-                start[g,u,c] = model.NewIntVar(0, HORIZON, f"start_{g}_{u}_{c}")
-                end[g,u,c]   = model.NewIntVar(0, HORIZON, f"end_{g}_{u}_{c}")
-                model.Add(end[g,u,c] == start[g,u,c] + course_duration)
-
-                day[g,u,c] = model.NewIntVar(0, DAYS-1, f"day_{g}_{u}_{c}")
-                model.AddDivisionEquality(day[g,u,c], start[g,u,c], HOURS_PER_DAY)
-
-                if groups[g]["cycle"] == "WDays" and weekend_list:
-                    for wd in weekend_list:
-                        model.Add(day[g,u,c] != wd)
-
-                # enforce same-day (no crossing)
-                end_day = model.NewIntVar(0, DAYS-1, f"endday_{g}_{u}_{c}")
-                model.AddDivisionEquality(end_day, end[g,u,c] - 1, HOURS_PER_DAY)
-                model.Add(day[g,u,c] == end_day)
-
-                if is_considering_shift:
-                    # enforce shift start and end hour
-                    hour_in_day = model.NewIntVar(0, HOURS_PER_DAY-1, f"hour_{g}_{u}_{c}")
-                    model.Add(hour_in_day == start[g,u,c] - (day[g,u,c] * HOURS_PER_DAY))
-                    model.Add(hour_in_day >= groups[g]["shift_start_hour"])
-                    model.Add(hour_in_day + course_duration <= groups[g]["shift_end_hour"])
-
-                venue_vars = []
-                for v in venue_list:
-                    use[g,u,c,v] = model.NewBoolVar(f"use_{g}_{u}_{c}_{v}")
-                    interval[g,u,c,v] = model.NewOptionalIntervalVar(
-                        start[g,u,c],
-                        course_duration,   
-                        end[g,u,c],
-                        use[g,u,c,v],
-                        f"int_{g}_{u}_{c}_{v}"
-                    )
-                    venue_vars.append(use[g,u,c,v])
-
-                # (g, u, c) must be assigned to exactly one venue for this class
-                model.Add(sum(venue_vars) == 1)
-
-    # Ensure that each subgroup (g,u) at any point in time is assigned to at most one course, one venue, and one trainer.
-    # That is, for each subgroup, the intervals for all course-venue-trainer assignments must not overlap.
-    for g in groups:
-        for u in groups[g]["subgroups"]:
-            intervals_for_gu = []
-            for c in groups[g]["courses"]:
-                for v in venue_list:
-                    for t in trainers:
-                        # Only add if this course can be assigned this trainer (i.e., y[g,u,c,t] exists)
-                        if (g, u, c, t) in y:
-                            # Build the optional interval with usage var being AND of use[g,u,c,v] and y[g,u,c,t]
-                            assigned = model.NewBoolVar(f"assigned_{g}_{u}_{c}_{v}_{t}")
-                            model.AddMultiplicationEquality(assigned, [use[g, u, c, v], y[g, u, c, t]])
-                            intervals_for_gu.append(
-                                model.NewOptionalIntervalVar(
-                                    start[g, u, c],
-                                    courses[c]['dur'],
-                                    end[g, u, c],
-                                    assigned,
-                                    f"int_{g}_{u}_{c}_{v}_{t}"
-                                )
-                            )
-            model.AddNoOverlap(intervals_for_gu)
-
-    # ===============================
-    # SHARED SUBGROUP
-    # ===============================
-    # Allow subgroups to share venue session for same course (even across groups)
-    same_session = {}
-    for c in courses:
-        # Collect all (g, u) pairs that take this course
-        gu_pairs = [(g, u) for g in groups for u in groups[g]["subgroups"] if c in groups[g]["courses"]]
-        
-        for i, (g1, u1) in enumerate(gu_pairs):
-            for (g2, u2) in gu_pairs[i+1:]:
-                same_session[(g1,u1,g2,u2,c)] = model.NewBoolVar(f"same_{g1}_{u1}_{g2}_{u2}_{c}")
-                
-                # same_session = 1 IFF same start AND same venue AND same trainer
-                same_start = model.NewBoolVar(f"same_start_{g1}_{u1}_{g2}_{u2}_{c}")
-                model.Add(start[g1,u1,c] == start[g2,u2,c]).OnlyEnforceIf(same_start)
-                model.Add(start[g1,u1,c] != start[g2,u2,c]).OnlyEnforceIf(same_start.Not())
-                
-                same_venue = model.NewBoolVar(f"same_venue_{g1}_{u1}_{g2}_{u2}_{c}")
-                venue_matches = []
-                for v in venue_list:
-                    both_v = model.NewBoolVar(f"both_{g1}_{u1}_{g2}_{u2}_{c}_{v}")
-                    model.AddMultiplicationEquality(both_v, [use[g1,u1,c,v], use[g2,u2,c,v]])
-                    venue_matches.append(both_v)
-                model.Add(sum(venue_matches) == 1).OnlyEnforceIf(same_venue)
-                model.Add(sum(venue_matches) == 0).OnlyEnforceIf(same_venue.Not())
-                
-                same_trainer = model.NewBoolVar(f"same_trainer_{g1}_{u1}_{g2}_{u2}_{c}")
-                trainer_matches = []
-                for t in trainers:
-                    if (g1,u1,c,t) in y and (g2,u2,c,t) in y:
-                        both_t = model.NewBoolVar(f"both_t_{g1}_{u1}_{g2}_{u2}_{c}_{t}")
-                        model.AddMultiplicationEquality(both_t, [y[g1,u1,c,t], y[g2,u2,c,t]])
-                        trainer_matches.append(both_t)
-                if trainer_matches:
-                    model.Add(sum(trainer_matches) >= 1).OnlyEnforceIf(same_trainer)
-                    model.Add(sum(trainer_matches) == 0).OnlyEnforceIf(same_trainer.Not())
-                else:
-                    model.Add(same_trainer == 0)
-                
-                # same_session = same_start AND same_venue AND same_trainer
-                model.AddBoolAnd([same_start, same_venue, same_trainer]).OnlyEnforceIf(same_session[(g1,u1,g2,u2,c)])
-                model.AddBoolOr([same_start.Not(), same_venue.Not(), same_trainer.Not()]).OnlyEnforceIf(same_session[(g1,u1,g2,u2,c)].Not())
-
-    # ===============================
-    # TRAINER & VENUE INTERVAL CONFLICTS (SHARED-SESSION-AWARE)
-    # ===============================
-    # In trainer NoOverlap, two trainer intervals are allowed to overlap for a trainer
-    # if and only if they are part of the SAME SHARED SESSION
-    #
-    # For each trainer, partition all of their interval assignments by "session signature":
-    # (course, session start, assigned venue, trainer) -- all subgroups sharing exactly these
-    # are treated as one grouped session and can overlap, but intervals with distinct sigs cannot.
-    #
-    # So, for each (c, s, v, t) tuple, collect all intervals of t that participate in that assignment
-    # and apply NoOverlap across all distinct *grouped sessions*.
-
-    trainer_interval = {}
-    for g in groups:
-        for u in groups[g]["subgroups"]:
-            for c in groups[g]["courses"]:
-                for v in venue_list:
-                    for t in trainers:
-                        if eligible.get((t, c), 0):
-                            trainer_active = model.NewBoolVar(f"train_active_{g}_{u}_{c}_{v}_{t}")
-                            model.AddMultiplicationEquality(trainer_active, [y[g, u, c, t], use[g, u, c, v]])
-
-                            trainer_interval[g, u, c, v, t] = model.NewOptionalIntervalVar(
-                                start[g,u,c],
-                                courses[c]['dur'],
-                                end[g,u,c],
-                                trainer_active,
-                                f"trainer_iv_{g}_{u}_{c}_{v}_{t}"
-                            )
-
-    # For each trainer, group intervals by their "session signature":
-    # (course, start time, venue assigned, trainer).
-    # For each unique (c, s, v, t), collect all (g,u) where trainer t is assigned to (g,u,c) and those (g,u,c,v,t)
-    # interval variables are present and active.
-
-    # We'll need the mapping: for each trainer t, a dict mapping
-    # (c, session_start, v) -> list of intervals (for all subgroups)
-    
-    for t in trainers:
-        sig_to_ivars = defaultdict(list)
-        for g in groups:
-            for u in groups[g]["subgroups"]:
-                for c in groups[g]["courses"]:
-                    for v in venue_list:
-                        key = (g, u, c, v, t)
-                        if key in trainer_interval:
-                            s_var = start[g,u,c]
-                            v_var = v
-                            sig = (c, s_var, v_var)
-                            sig_to_ivars[sig].append(trainer_interval[key])
-
-
-        # For each group of intervals that share a session signature,
-        # we DO NOT add NoOverlap (they may overlap, by design!).
-        # Instead, for each pair of distinct signatures, add NoOverlap
-        # across all intervals in all sigs (i.e., cannot overlap between sigs).
-
-        all_sigs = list(sig_to_ivars.keys())
-
-        # For a given trainer, collect all intervals into sig clusters
-        # and ensure across clusters, there's no overlap
-        # This is efficiently equivalent to:
-
-        for sig, ivars in sig_to_ivars.items():
-            # For each signature, all intervals in different sigs cannot overlap with those in this cluster
-            # We'll build one supercluster of all intervals of t not in sig, and force NoOverlap
-            other_ivars = []
-            for sig2 in all_sigs:
-                if sig2 != sig:
-                    other_ivars.extend(sig_to_ivars[sig2])
-
-            if ivars and other_ivars:
-                # The ivars of different session signatures should not overlap
-                model.AddNoOverlap(ivars + other_ivars)  # effectively pairwise, but no restriction among same sig
-
-    # VENUE NO-OVERLAP
-    for v in venue_list:
-        venue_ivs = []
-        for g in groups:
-            for u in groups[g]["subgroups"]:
-                for c in groups[g]["courses"]:
-                    for t in trainers:
-                        key = (g, u, c, v, t)
-                        if key in trainer_interval:
-                            venue_ivs.append(trainer_interval[key])
-
-        model.AddNoOverlap(venue_ivs)
+        # S could look like: {'C1': [0, 1, 2], 'C2': [0, 1]}
+        # Where S['C1'] = [0,1,2] means there are 3 sessions for course 'C1'
 
 
     # ===============================
-    # VENUE CAPACITY (CUMULATIVE)
+    # SESSION VARIABLES
     # ===============================
-    # Capacity constraint now allows multiple subgroups of same course to share venue
-    for v, cap in venues.items():
-        model.AddCumulative(
-            [
-                interval[g,u,c,v]
-                    for g in groups
-                    for u in groups[g]["subgroups"]
-                    for c in groups[g]["courses"]
-            ],
-            [
-                groups[g]["subgroups"][u]
-                    for g in groups
-                    for u in groups[g]["subgroups"]
-                    for c in groups[g]["courses"]
-            ],
-            cap
-        )
+    active_session = {}
+    start_session = {}
+    end_session = {}
+    day_session = {}
+    venue_session = {}
+    trainer_session = {}
+
+    for course in C:
+        dur = C[course]["dur"]
+
+        for session in S[course]:
+            active_session[course, session] = model.NewBoolVar(f"active_{course}_{session}")
+
+            start_session[course, session] = model.NewIntVar(0, HORIZON, f"start_{course}_{session}")
+            end_session[course, session] = model.NewIntVar(0, HORIZON, f"end_{course}_{session}")
+
+            model.Add(
+                end_session[course, session] == start_session[course, session] + dur
+            )
+
+            day_session[course, session] = model.NewIntVar(0, DAYS - 1, f"day_{course}_{session}")
+            model.AddDivisionEquality(
+                day_session[course, session], start_session[course, session], HOURS_PER_DAY
+            )
+
+            # Same-day constraint
+            end_day = model.NewIntVar(0, DAYS - 1, f"endday_{course}_{session}")
+            model.AddDivisionEquality(
+                end_day, end_session[course, session] - 1, HOURS_PER_DAY
+            )
+            
+            model.Add(
+                day_session[course, session] == end_day
+            ).OnlyEnforceIf(active_session[course, session])
+
+            # Venue Assignment
+            for venue in V:
+                venue_session[course, session, venue] = model.NewBoolVar(f"venue_{course}_{session}_{venue}")
+
+            model.Add(
+                sum(
+                    venue_session[course, session, venue]
+                        for venue in V
+                ) == active_session[course, session]
+            )
+
+            # Trainer Assignment
+            for trainer in T:
+                if eligible.get((trainer, course), 0):
+                    trainer_session[course, session, trainer] = model.NewBoolVar(f"trainer_{course}_{session}_{trainer}")
+
+            model.Add(
+                sum(
+                    trainer_session[course, session, trainer]
+                    for trainer in trainers
+                        if (course, session, trainer) in trainer_session
+                ) == active_session[course, session]
+            )
 
 
     # ===============================
-    # PREREQUISITES TRAINEE-COURSE LEVEL
+    # SUBGROUP → SESSION ASSIGNMENT
     # ===============================
-    for g in groups:
-        for u in groups[g]["subgroups"]:
-            for c in groups[g]["courses"]:
-                for prereq in courses[c]["prereq"]:
-                        key1 = (g, u, prereq)
-                        key2 = (g, u, c)
+    assign = {}
 
-                        if key1 in start and key2 in start:
-                            model.Add(start[key1] < start[key2])
+    for group in G:
+        for subgroup in G[group]["subgroups"]:
+            for course in G[group]["courses"]:
+                assign_vars = []
+
+                for session in S[course]:
+                    assign[group, subgroup, course, session] = model.NewBoolVar(f"assign_{group}_{subgroup}_{course}_{session}")
+                    assign_vars.append(assign[group, subgroup, course, session])
+
+                model.Add(sum(assign_vars) == 1)
 
 
     # ===============================
-    # PREREQUISITES GLOBAL-COURSE LEVEL
+    # SESSION ACTIVE IF USED
     # ===============================
-    # first need to count how many gu taking each course
-    # then for each prerequisite pair, ensure that the total number of sessions of the prerequisite course
-    # that start before the earliest session of the dependent course is at least the number of gu taking the dependent course
-    if params['is_using_global_sequence']:
-        course_gu_count = defaultdict(int)
-        for g in groups:
-            for u in groups[g]["subgroups"]:
-                for c in groups[g]["courses"]:
-                    course_gu_count[c] += 1
-        
-        for c, info in courses.items():
-            for prereq in info["prereq"]:
-                # Get all (g,u) taking c and prereq
-                gu_c = [(g, u) for g in groups for u in groups[g]["subgroups"] if c in groups[g]["courses"]]
-                gu_prereq = [(g, u) for g in groups for u in groups[g]["subgroups"] if prereq in groups[g]["courses"]]
+    for course in C:
+        for session in S[course]:
 
-                if not gu_c or not gu_prereq:
-                    continue  # If no one takes the course or prereq, skip
+            model.AddMaxEquality(
+                active_session[course, session],
+                [
+                    assign[group, subgroup, course, session]
+                        for group in G
+                        for subgroup in G[group]["subgroups"]
+                            if course in G[group]["courses"]
+                ]
+            )
 
-                # Earliest start of c across all (g,u)
-                earliest_c = model.NewIntVar(0, HORIZON, f"earliest_{c}")
-                model.AddMinEquality(earliest_c, [start[g,u,c] for (g,u) in gu_c])
 
-                # Count how many sessions of prereq start before earliest_c
-                prereq_before_c = []
-                for (g,u) in gu_prereq:
-                    b = model.NewBoolVar(f"prereq_{prereq}_before_{c}_{g}_{u}")
-                    model.Add(start[g,u,prereq] < earliest_c).OnlyEnforceIf(b)
-                    model.Add(start[g,u,prereq] >= earliest_c).OnlyEnforceIf(b.Not())
-                    prereq_before_c.append(b)
+    # ===============================
+    # SHIFT CONSTRINTS
+    # ===============================
+    if is_considering_shift:
+        hour_session = {}
 
-                # Total sessions of prereq before earliest_c must be at least course_gu_count[c]
-                model.Add(sum(prereq_before_c) >= course_gu_count[c])
+        for course in C:
+            for session in S[course]:
+                hour_session[course, session] = model.NewIntVar(0, HOURS_PER_DAY - 1, f"hour_{course}_{session}")
+
+                model.Add(
+                    hour_session[course, session] ==
+                    start_session[course, session] - (day_session[course, session] * HOURS_PER_DAY)
+                )
+
+        for group in G:
+            shift_start = G[group]["shift_start_hour"]
+            shift_end = G[group]["shift_end_hour"]
+
+            for subgroup in G[group]["subgroups"]:
+                for course in G[group]["courses"]:
+                    dur = C[course]["dur"]
+
+                    for session in S[course]:
+                        model.Add(
+                            hour_session[course, session] >= shift_start
+                        ).OnlyEnforceIf(assign[group, subgroup, course, session])
+
+                        model.Add(
+                            hour_session[course, session] + dur <= shift_end
+                        ).OnlyEnforceIf(assign[group, subgroup, course, session])
+
+
+    # ===============================
+    # WEEKEND CONSTRINTS
+    # ===============================
+    if weekend_list:
+        for group in G:
+            if G[group]["cycle"] == "WDays":
+
+                for subgroup in G[group]["subgroups"]:
+                    for course in G[group]["courses"]:
+                        for session in S[course]:
+
+                            for wd in weekend_list:
+                                model.Add(
+                                    day_session[course, session] != wd
+                                ).OnlyEnforceIf(assign[group, subgroup, course, session])
 
 
     # ===============================
     # DAILY TRAINEE LIMIT (≤ MAX_SESSION_LENGTH)
     # ===============================
-    for g in groups:
-        for u in groups[g]["subgroups"]:
-            for d in range(DAYS):
-                load = []
+    for group in G:
+        for subgroup in G[group]["subgroups"]:
+            for day in range(DAYS):
+                terms = []
 
-                for c in groups[g]["courses"]:
-                    b = model.NewBoolVar(f"is_{g}_{u}_{c}_day{d}")
+                for course in G[group]["courses"]:
+                    dur = C[course]["dur"]
 
-                    model.Add(day[g,u,c] == d).OnlyEnforceIf(b)
-                    model.Add(day[g,u,c] != d).OnlyEnforceIf(b.Not())
+                    for session in S[course]:
+                        b = model.NewBoolVar(f"attend_{group}_{subgroup}_{course}_{session}_{day}")
 
-                    load.append(b * courses[c]['dur'])
+                        # b = 1 only if assigned AND session is on day d
+                        model.Add(
+                            day_session[course, session] == day
+                        ).OnlyEnforceIf(b)
 
-                model.Add(sum(load) <= MAX_SESSION_LENGTH)
+                        model.AddImplication(
+                            b,
+                            assign[group, subgroup, course, session]
+                        )
+
+                        terms.append(dur * b)
+
+                model.Add(sum(terms) <= MAX_SESSION_LENGTH)
+
+
+    # ===============================
+    # GROUP-SUBGROUP NO-OVERLAP
+    # ===============================
+    for group in G:
+        for subgroup in G[group]["subgroups"]:
+            interval_session = []
+
+            for course in G[group]["courses"]:
+                dur = courses[course]["dur"]
+
+                for session in S[course]:
+                    interval = model.NewOptionalIntervalVar(
+                        start_session[course, session],
+                        dur,
+                        end_session[course, session],
+                        assign[group, subgroup, course, session],
+                        f"interval_group_{group}_{subgroup}_{course}_{session}"
+                    )
+
+                    interval_session.append(interval)
+
+            model.AddNoOverlap(interval_session)
+
+
+    # ===============================
+    # TRAINER NO-OVERLAP
+    # ===============================
+    for trainer in T:
+        interval_session = []
+
+        for course in C:
+            dur = C[course]["dur"]
+
+            for session in S[course]:
+                if (course, session, trainer) in trainer_session:
+                    interval = model.NewOptionalIntervalVar(
+                        start_session[course, session],
+                        dur,
+                        end_session[course, session],
+                        trainer_session[course, session, trainer],
+                        f"interval_trainer_{course}_{session}_{trainer}"
+                    )
+
+                    interval_session.append(interval)
+
+        model.AddNoOverlap(interval_session)
+
+
+    # ===============================
+    # VENUE NO-OVERLAP
+    # ===============================
+    for venue in V:
+        interval_session = []
+
+        for course in C:
+            dur = C[course]["dur"]
+
+            for session in S[course]:
+                interval = model.NewOptionalIntervalVar(
+                    start_session[course, session],
+                    dur,
+                    end_session[course, session],
+                    venue_session[course, session, venue],
+                    f"interval_venue_{course}_{session}_{venue}"
+                )
+
+                interval_session.append(interval)
+
+        model.AddNoOverlap(interval_session)
+
+
+    # ===============================
+    # VENUE CAPACITY (CUMULATIVE)
+    # ===============================
+    for course in C:
+        for session in S[course]:
+            occupancy = sum(
+                G[group]["subgroups"][subgroup] * assign[group, subgroup, course, session]
+                    for group in G
+                    for subgroup in G[group]["subgroups"]
+                        if course in G[group]["courses"]
+            )
+
+            for venue, capacity in venues.items():
+                model.Add(occupancy <= capacity).OnlyEnforceIf(venue_session[course, session, venue])
+
+
+    # ===============================
+    # PREREQUISITES (SUBGROUP LEVEL)
+    # ===============================
+    for group in G:
+        for subgroup in G[group]["subgroups"]:
+
+            for course in G[group]["courses"]:
+                for prereq in C[course]["prereq"]:
+
+                    for s1 in S[prereq]:
+                        for s2 in S[course]:
+
+                            model.Add(
+                                start_session[prereq, s1] < start_session[course, s2]
+                            ).OnlyEnforceIf(
+                                [
+                                    assign[group, subgroup, prereq, s1],
+                                    assign[group, subgroup, course, s2],
+                                ]
+                            )
+
+
+    # ===============================
+    # PREREQUISITES (GLOBAL LEVEL)
+    # ===============================
+
 
     # ===============================
     # OBJECTIVES: MAXIMIZE SHARED SESSIONS + EVEN DAILY DISTRIBUTION
     # ===============================
 
-    # --- Maximize shared sessions ---
-    total_shared = model.NewIntVar(0, len(same_session), "total_shared")
-    model.Add(total_shared == sum(same_session.values()))
+    # --- Minimize Open Sessions ---
+    total_open_sessions = model.NewIntVar(0, 100000, "total_open_sessions")
+
+    model.Add(
+        total_open_sessions ==
+        sum(
+            active_session[course, session]
+                for course in C for session in S[course]
+        )
+    )
 
 
-    # --- Balance trainer load ---
-    trainer_load = {}
-    for t in trainers:
-        trainer_load[t] = model.NewIntVar(0, HORIZON, f"trainer_load_{t}")
+    # --- Minimize Daily Session Imbalance
+    daily_duration = {}
+
+    for day in range(DAYS):
+        terms = []
+
+        for course in C:
+            dur = C[course]["dur"]
+
+            for session in S[course]:
+                b = model.NewBoolVar(f"is_{course}_{session}_day_{day}")
+
+                model.Add(day_session[course, session] == day).OnlyEnforceIf(b)
+                model.Add(day_session[course, session] != day).OnlyEnforceIf(b.Not())
+
+                terms.append(dur * b)
+
+        daily_duration[day] = model.NewIntVar(0, HORIZON * len(C), f"daily_dur_{day}")
         model.Add(
-            trainer_load[t] ==
+            daily_duration[day] == sum(terms)
+        )
+
+    max_daily = model.NewIntVar(0, HORIZON * len(C), "max_daily")
+    min_daily = model.NewIntVar(0, HORIZON * len(C), "min_daily")
+
+    for day in range(DAYS):
+        model.Add(daily_duration[day] <= max_daily)
+        model.Add(daily_duration[day] >= min_daily)
+
+    daily_imbalance = model.NewIntVar(0, HORIZON * len(C), "daily_imbalance")
+    model.Add(
+        daily_imbalance == max_daily - min_daily
+    )
+
+
+    # --- Minimize Trainer Workload Imbalance ---
+    trainer_load = {}
+    for trainer in T:
+        trainer_load[trainer] = model.NewIntVar(0, HORIZON, f"trainer_load_{trainer}")
+
+        model.Add(
+            trainer_load[trainer] ==
             sum(
-                courses[c]['dur'] * y[g,u,c,t]
-                for g in groups
-                for u in groups[g]["subgroups"]
-                for c in groups[g]["courses"]
-                if (g,u,c,t) in y
+                C[course]["dur"] * trainer_session[course, session, trainer]
+                    for course in C
+                        for session in S[course]
+                    if (course, session, trainer) in trainer_session
             )
         )
 
-    max_trainer_load = model.NewIntVar(0, HORIZON, "max_trainer_load")
-    min_trainer_load = model.NewIntVar(0, HORIZON, "min_trainer_load")
+    max_load = model.NewIntVar(0, HORIZON, "max_trainer_load")
+    min_load = model.NewIntVar(0, HORIZON, "min_trainer_load")
 
-    for t in trainers:
-        model.Add(trainer_load[t] <= max_trainer_load)
-        model.Add(trainer_load[t] >= min_trainer_load)
+    for trainer in T:
+        model.Add(trainer_load[trainer] <= max_load)
+        model.Add(trainer_load[trainer] >= min_load)
 
     trainer_imbalance = model.NewIntVar(0, HORIZON, "trainer_imbalance")
-    model.Add(trainer_imbalance == max_trainer_load - min_trainer_load)
+    model.Add(trainer_imbalance == max_load - min_load)
 
 
-    # --- Balance daily load ---
-    MAX_DAILY_LOAD_AVAILABLE = len(venue_list)*HOURS_PER_DAY
-
-    daily_load = {}
-    for d in range(DAYS):
-        daily_load[d] = model.NewIntVar(0, MAX_DAILY_LOAD_AVAILABLE, f"daily_load_{d}")
-        terms = []
-        for g in groups:
-            for u in groups[g]["subgroups"]:
-                for c in groups[g]["courses"]:
-                    b = model.NewBoolVar(f"is_{g}_{u}_{c}_day{d}")
-
-                    model.Add(day[g,u,c] == d).OnlyEnforceIf(b)
-                    model.Add(day[g,u,c] != d).OnlyEnforceIf(b.Not())
-
-                    terms.append(b * courses[c]['dur'])
-                    
-        model.Add(daily_load[d] == sum(terms))
-
-    max_daily_load = model.NewIntVar(0, MAX_DAILY_LOAD_AVAILABLE, "max_daily_load")
-    min_daily_load = model.NewIntVar(0, MAX_DAILY_LOAD_AVAILABLE, "min_daily_load")
-
-    for d in range(DAYS):
-        model.Add(daily_load[d] <= max_daily_load)
-        model.Add(daily_load[d] >= min_daily_load)
-
-    daily_imbalance = model.NewIntVar(0, MAX_DAILY_LOAD_AVAILABLE, "daily_imbalance")
-    model.Add(daily_imbalance == max_daily_load - min_daily_load)
-
-    model.Maximize(
-        total_shared       * 1000000   # primary
-        - daily_imbalance    * 1000       # secondary
-        - trainer_imbalance  * 10           # tertiary
+    model.Minimize(
+        total_open_sessions * 100000 +
+        daily_imbalance * 1000 +
+        trainer_imbalance
     )
 
 
     # ===============================
     # SOLVE
     # ===============================
+
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = params['max_time_in_seconds']
     solver.parameters.num_search_workers = params['num_search_workers']
@@ -428,156 +448,233 @@ def run_solver(params: dict):
 
     print("Status:", solver.StatusName(status))
     print(f"Objective value: {solver.ObjectiveValue()}")
-    print(f"Total shared sessions: {solver.Value(total_shared)}")
 
     if status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-        schedule_rows = []
-        timetable_cells = {}
-        for g, u, c in start:
-            s = solver.Value(start[g, u, c])
-            e = solver.Value(end[g, u, c])
-            start_day = s // HOURS_PER_DAY
-            start_hour = s % HOURS_PER_DAY
-            end_day = e // HOURS_PER_DAY
-            end_hour = e % HOURS_PER_DAY
+        rows = []
+        for group in G:
+            for subgroup, trainees in G[group]["subgroups"].items():
+                for course in G[group]["courses"]:
 
-            # Find assigned venue
-            venue_name = None
-            venue_occupancy = None
-            venue_max_capacity = None
-            for v in venue_list:
-                if (g, u, c, v) in use and solver.Value(use[g, u, c, v]):
-                    venue_name = v
-                    venue_max_capacity = venues[v]
-                    venue_occupancy = groups[g]["subgroups"][u]
-                    break
+                    # find chosen session
+                    chosen_session = None
+                    for session in S[course]:
+                        if solver.Value(assign[group, subgroup, course, session]):
+                            chosen_session = session
+                            break
 
-            # Find assigned trainer
-            trainer_name = None
-            for t in trainers:
-                if (g, u, c, t) in y and solver.Value(y[g, u, c, t]):
-                    trainer_name = t
-                    break
+                    if chosen_session is None:
+                        continue
 
-            # Get list of trainees names for the subgroup
-            trainee_names = groups[g]["subgroups"][u] if "subgroups" in groups[g] and u in groups[g]["subgroups"] else []
+                    # start/end
+                    start = solver.Value(start_session[course, chosen_session])
+                    end = solver.Value(end_session[course, chosen_session])
 
-            schedule_rows.append({
-                "Group": g,
-                "Subgroup": u,
-                "Trainees": trainee_names,
-                "Course": c,
-                "Start Day": start_day,
-                "Start Hour": start_hour,
-                "End Day": end_day,
-                "End Hour": end_hour,
-                "Venue": venue_name,
-                "Venue Max Capacity": venue_max_capacity,
-                "Venue Occupancy": venue_occupancy,
-                "Trainer": trainer_name
-            })
+                    start_day = start // HOURS_PER_DAY
+                    start_hour = start % HOURS_PER_DAY
 
-            # Fill timetable_cells for simple markdown timetable
-            if venue_name is not None and trainer_name is not None:
-                key = (venue_name, g, u)
-                if key not in timetable_cells:
-                    timetable_cells[key] = {}
-                # Span the session from start 's' up to but not including end 'e'
-                for abs_time in range(s, e):
-                    day = abs_time // HOURS_PER_DAY
-                    hour = abs_time % HOURS_PER_DAY
-                    timetable_cells[key][(day, hour)] = trainer_name
+                    end_day = (end - 1) // HOURS_PER_DAY
+                    end_hour = (end - 1) % HOURS_PER_DAY + 1
 
-        df = pd.DataFrame(schedule_rows)
+                    # calendar mapping
+                    date_str = calendar.dates[start_day].date
+                    day_name = datetime.datetime.strptime(str(date_str), "%Y-%m-%d").strftime("%A")
+
+                    start_time = hour_index_to_time(start_hour, is_start=True)
+                    end_time = hour_index_to_time(end_hour, is_start=False)
+
+                    # venue
+                    venue_used = None
+                    for venue in V:
+                        if solver.Value(venue_session[course, chosen_session, venue]):
+                            venue_used = venue
+                            break
+
+                    # trainer
+                    trainer_used = None
+                    for trainer in T:
+                        key = (course, chosen_session, trainer)
+                        if key in trainer_session and solver.Value(trainer_session[key]):
+                            trainer_used = trainer
+                            break
+
+                    # occupancy of session
+                    occupancy = sum(
+                        G[g]["subgroups"][u]
+                        for g in G
+                        for u in G[g]["subgroups"]
+                        if course in G[g]["courses"]
+                        and solver.Value(assign[g, u, course, chosen_session])
+                    )
+
+                    rows.append([
+                        group,
+                        subgroup,
+                        trainees,
+                        course,
+                        start_day,
+                        start_hour,
+                        end_day,
+                        end_hour,
+                        date_str,
+                        day_name,
+                        start_time,
+                        end_time,
+                        venue_used,
+                        venues[venue_used],
+                        occupancy,
+                        trainer_used,
+                        '-'
+                    ])
+
+        df = pd.DataFrame(rows, columns=[
+            "Group",
+            "Subgroup",
+            "Trainees",
+            "Course",
+            "Start Day",
+            "Start Hour",
+            "End Day",
+            "End Hour",
+            "Date",
+            "Day",
+            "Start Time",
+            "End Time",
+            "Venue",
+            "Venue Max Capacity",
+            "Venue Occupancy",
+            "Trainer",
+            "Session"
+        ])
+
         print("\nSCHEDULE:")
         print(df)
         df.to_csv(f"export/{params['report_name']}_schedule.csv", index=False)
+
+        # Merge only the 'trainee' column from groups_trainee_df into df
+        df = df.merge(
+            groups_trainee[['group_name', 'subgroup_name', 'trainee']],
+            left_on=["Group", "Subgroup"],
+            right_on=["group_name", "subgroup_name"],
+            how='left'
+        )
+        
+        # Remove specified columns
+        columns_to_drop = ["Trainees", "Venue Occupancy", "group_name", "subgroup_name"]
+        df = df.drop(columns=[col for col in columns_to_drop if col in df.columns])
+
+        # Rename 'trainee' column to 'Trainee'
+        if 'trainee' in df.columns:
+            df = df.rename(columns={'trainee': 'Trainee'})
+
+        print("\nSCHEDULE DETAIL:")
+        print(df)
+
+        df.to_csv(f"export/{params['report_name']}_schedule_detail.csv", index=False)
+
+        print("\nResult has been exported.")
+
+
+        from collections import defaultdict
+        
+        def get_interval(course, session):
+            start = solver.Value(start_session[course, session])
+            end = solver.Value(end_session[course, session])
+            return start, end
+
+
+        def overlap(a_start, a_end, b_start, b_end):
+            return not (a_end <= b_start or b_end <= a_start)
+
+
+        # ===============================
+        # TRAINER OVERLAP CHECK
+        # ===============================
+        trainer_intervals = defaultdict(list)
+
+        for c in C:
+            for s in S[c]:
+                for t in T:
+                    key = (c, s, t)
+                    if key in trainer_session and solver.Value(trainer_session[key]):
+                        trainer_intervals[t].append((c, s, *get_interval(c, s)))
+
+        for t, sessions in trainer_intervals.items():
+            for i in range(len(sessions)):
+                for j in range(i + 1, len(sessions)):
+                    _, _, s1, e1 = sessions[i]
+                    _, _, s2, e2 = sessions[j]
+                    if overlap(s1, e1, s2, e2):
+                        print("TRAINER OVERLAP:", t, sessions[i], sessions[j])
+
+
+        # ===============================
+        # VENUE OVERLAP CHECK
+        # ===============================
+        venue_intervals = defaultdict(list)
+
+        for c in C:
+            for s in S[c]:
+                for v in V:
+                    if solver.Value(venue_session[c, s, v]):
+                        venue_intervals[v].append((c, s, *get_interval(c, s)))
+
+        for v, sessions in venue_intervals.items():
+            for i in range(len(sessions)):
+                for j in range(i + 1, len(sessions)):
+                    _, _, s1, e1 = sessions[i]
+                    _, _, s2, e2 = sessions[j]
+                    if overlap(s1, e1, s2, e2):
+                        print("VENUE OVERLAP:", v, sessions[i], sessions[j])
+
+
+        # ===============================
+        # SUBGROUP OVERLAP CHECK
+        # ===============================
+        subgroup_intervals = defaultdict(list)
+
+        for g in G:
+            for u in G[g]["subgroups"]:
+                for c in G[g]["courses"]:
+                    for s in S[c]:
+                        if solver.Value(assign[g, u, c, s]):
+                            subgroup_intervals[(g, u)].append(
+                                (c, s, *get_interval(c, s))
+                            )
+
+        for gu, sessions in subgroup_intervals.items():
+            for i in range(len(sessions)):
+                for j in range(i + 1, len(sessions)):
+                    _, _, s1, e1 = sessions[i]
+                    _, _, s2, e2 = sessions[j]
+                    if overlap(s1, e1, s2, e2):
+                        print("SUBGROUP OVERLAP:", gu, sessions[i], sessions[j])
+
+
+        # ===============================
+        # VENUE CAPACITY CHECK
+        # ===============================
+        for c in C:
+            for s in S[c]:
+
+                # compute occupancy
+                occupancy = sum(
+                    G[g]["subgroups"][u]
+                    for g in G
+                    for u in G[g]["subgroups"]
+                    if c in G[g]["courses"]
+                    and solver.Value(assign[g, u, c, s])
+                )
+
+                for v in V:
+                    if solver.Value(venue_session[c, s, v]):
+                        if occupancy > venues[v]:
+                            print(
+                                "CAPACITY BREACH:",
+                                c, s,
+                                "venue", v,
+                                "occupancy", occupancy,
+                                "capacity", venues[v]
+                            )
+
+
     
-
-
-
-
-        # # Print sharing information
-        # print("\n" + "="*60)
-        # print("SHARED SESSIONS:")
-        # print("="*60)
-        # shared_count = 0
-        # for key, var in same_session.items():
-        #     if solver.Value(var):
-        #         shared_count += 1
-        #         if len(key) == 6:  # (g1, u1, g2, u2, c, k)
-        #             g1, u1, g2, u2, c, k = key
-        #             s1 = solver.Value(start[g1, u1, c, k])
-        #             v1 = [v for v in venue_list if solver.Value(use[g1, u1, c, k, v])][0]
-        #             t1 = [t for t in trainers if (g1, u1, c, t) in y and solver.Value(y[g1, u1, c, t])][0]
-        #             print(f"  {g1}/{u1} + {g2}/{u2} share {c} session {k}")
-        #             print(f"    → Time: {s1}, Venue: {v1}, Trainer: {t1}")
-        # if shared_count == 0:
-        #     print("  No sessions shared")
-        # print(f"\nTotal shared: {shared_count}")
-
-        # Build improved markdown timetable and write to 'timetable.md'
-        timetable_lines = []
-        timetable_lines.append("")  # Blank line at start for markdown preview compatibility
-        timetable_lines.append("SIMPLE TIMETABLE (Trainer name in slot):")
-        # Header
-        times = [(d, h) for d in range(DAYS) for h in range(HOURS_PER_DAY)]
-        times_header = ["D{}:{:02d}".format(d + 1, h+8) for (d, h) in times]
-        first_cols = ["Venue", "Group", "Subgroup", "Course"]
-        header_row = "| " + " | ".join(first_cols + times_header) + " |"
-        sep_row = "|" + "|".join(["---"] * (len(first_cols) + len(times_header))) + "|"
-        timetable_lines.append(header_row)
-        timetable_lines.append(sep_row)
-        # All rows sorted by venue, group, subgroup, course for stable output
-        # Need to deduce which course is scheduled in each cell (d, h) for this (v, g, u)
-        # Build a mapping from (v, g, u, d, h) -> course if possible
-        # We'll reconstruct course assignment from schedule_rows
-        cell_course_assignment = {}
-        for sched in schedule_rows:
-            v = sched["Venue"]
-            g = sched["Group"]
-            u = sched["Subgroup"]
-            c = sched["Course"]
-            # Get session's absolute start and end (in hours)
-            s_day, s_hour = sched["Start Day"], sched["Start Hour"]
-            e_day, e_hour = sched["End Day"], sched["End Hour"]
-            s = s_day * HOURS_PER_DAY + s_hour
-            e = e_day * HOURS_PER_DAY + e_hour
-            for abs_time in range(s, e):
-                d = abs_time // HOURS_PER_DAY
-                h = abs_time % HOURS_PER_DAY
-                key = (v, g, u, d, h)
-                cell_course_assignment[key] = c
-        # Collect all unique (venue, group, subgroup, course) combinations that appear in timetable_cells
-        all_keys_with_courses = []
-        for (v, g, u) in sorted(timetable_cells.keys()):
-            # For each (d, h) timeslot look up which courses appear
-            cell_map = timetable_cells[(v, g, u)]
-            courses_in_this_key = set()
-            for (d, h), trainer in cell_map.items():
-                c = cell_course_assignment.get((v, g, u, d, h))
-                if c is not None:
-                    courses_in_this_key.add(c)
-            # If there are no courses (empty slot), show one row with blank course
-            if not courses_in_this_key:
-                all_keys_with_courses.append((v, g, u, ""))
-            else:
-                for c in sorted(courses_in_this_key):
-                    all_keys_with_courses.append((v, g, u, c))
-        # Now, for each (v, g, u, c) row, fill the cells for that course only
-        for v, g, u, c in all_keys_with_courses:
-            row = []
-            for d, h in times:
-                # Show trainer only if course matches at this slot
-                trainer = timetable_cells[(v, g, u)].get((d, h), "")
-                course_here = cell_course_assignment.get((v, g, u, d, h), "")
-                cell_value = trainer if course_here == c else ""
-                row.append(cell_value)
-            timetable_lines.append(
-                "| {} | {} | {} | {} | {} |".format(v, g, u, c, " | ".join(row))
-            )
-        # Write out with proper line endings (just "\n")
-        with open(f"export/{params['report_name']}_timetable.md", "w", encoding="utf-8") as f:
-            for line in timetable_lines:
-                f.write(line.rstrip() + "\n")
-        print("\nTimetable markdown written to timetable.md")

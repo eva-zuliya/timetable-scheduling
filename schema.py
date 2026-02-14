@@ -63,13 +63,17 @@ class Date(BaseModel):
 
 class Calendar(BaseModel):
     dates: list[Date]
+    holidays: list[str]
 
-    def __init__(self, start_date: str, days: int):
+    def __init__(self, start_date: str, days: int, holidays: list[str] = ['2026-02-17']):
         start = datetime.strptime(start_date, "%Y-%m-%d")
         current = start
         added_days = 0
         dates = []
         while added_days < days:
+            if start in holidays:
+                continue
+
             if current.weekday() != 6:  # 6 = Sunday
                 date_str = current.strftime("%Y-%m-%d")
                 is_weekend = current.weekday() in (5, 6)  # 5=Saturday, 6=Sunday
@@ -78,7 +82,7 @@ class Calendar(BaseModel):
 
             current += timedelta(days=1)
 
-        super().__init__(dates=dates)
+        super().__init__(dates=dates, holidays=holidays)
 
     @property
     def weekend_index(self) -> list[int]:

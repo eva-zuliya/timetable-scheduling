@@ -22,7 +22,7 @@ def read_data(params: dict):
         file_master_course_sequence=params['file_master_course_sequence']
     )
 
-    groups = read_trainees(
+    groups, groups_trainee = read_trainees(
         file_master_trainee=params['file_master_trainee'],
         file_master_course_trainee=params['file_master_course_trainee'],
         report_name=params['report_name'],
@@ -30,7 +30,7 @@ def read_data(params: dict):
         maximum_group_size=params['maximum_group_size']
     )
 
-    weekend_list = read_calendar(
+    calendar, weekend_list = read_calendar(
         start_date=params['start_date'],
         days=params['days']
     )
@@ -48,7 +48,10 @@ def read_data(params: dict):
         'eligible': eligible,
         'courses': courses,
         'groups': groups,
+        'groups_trainee': group_trainee,
         'is_considering_shift': params['is_considering_shift'],
+        'calendar': calendar,
+        'calendar': calendar,
         'weekend_list': weekend_list
     }
 
@@ -201,8 +204,8 @@ def read_trainees(
     for group in _groups:
         group.split_subgroups(maximum_group_size)
 
-    export_groups_trainee_to_df(groups=_groups, report_name=report_name)
-    export_groups_courses_to_df(groups=_groups, report_name=report_name)
+    _df_group_trainee = export_groups_trainee_to_df(groups=_groups, report_name=report_name)
+    _df_group_courses = export_groups_courses_to_df(groups=_groups, report_name=report_name)
 
     groups = {
         group.name: {
@@ -228,4 +231,4 @@ def read_calendar(
         days = days
     )
 
-    return calendar.weekend_index
+    return calendar, calendar.weekend_index
