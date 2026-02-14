@@ -10,7 +10,8 @@ from typing import Optional
 
 def read_data(params: dict):
     venues, venue_list = read_venue(
-        file_master_venue=params['file_master_venue']
+        file_master_venue=params['file_master_venue'],
+        buffer_capacity=params['buffer_capacity']
     )
 
     trainers, eligible = read_trainers(
@@ -61,11 +62,12 @@ def read_data(params: dict):
 
 
 def read_venue(
-    file_master_venue: str
+    file_master_venue: str,
+    buffer_capacity: Optional[int] = 0
 ):
     _df_venue = pd.read_csv(file_master_venue)
     _venues = [
-        Venue(name=row['venue_name'], capacity=row['capacity']+5)
+        Venue(name=row['venue_name'], capacity=row['capacity']+buffer_capacity)
         for _, row in _df_venue.iterrows()
     ]
 
