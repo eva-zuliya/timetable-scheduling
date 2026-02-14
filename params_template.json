@@ -22,5 +22,7 @@
     "num_search_workers": 8,
 
     "is_using_sample_data": true,
-    "is_using_global_sequence": true
+    "is_using_global_sequence": true,
+
+    "course_stream": ["WM"]
 }

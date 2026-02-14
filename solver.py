@@ -454,6 +454,7 @@ def run_solver(params: dict):
         for group in G:
             for subgroup, trainees in G[group]["subgroups"].items():
                 for course in G[group]["courses"]:
+                    course_stream = C[course]['stream']
 
                     # find chosen session
                     chosen_session = None
@@ -511,6 +512,7 @@ def run_solver(params: dict):
                         subgroup,
                         trainees,
                         course,
+                        course_stream,
                         start_day,
                         start_hour,
                         end_day,
@@ -531,6 +533,7 @@ def run_solver(params: dict):
             "Subgroup",
             "Trainees",
             "Course",
+            "Stream",
             "Start Day",
             "Start Hour",
             "End Day",
@@ -575,7 +578,7 @@ def run_solver(params: dict):
 
 
         from collections import defaultdict
-        
+
         def get_interval(course, session):
             start = solver.Value(start_session[course, session])
             end = solver.Value(end_session[course, session])

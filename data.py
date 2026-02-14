@@ -5,6 +5,7 @@ import json
 from pygments import highlight, lexers, formatters
 from schema import Venue, Trainer, Course, Trainee, Group, Calendar
 from utils import export_groups_courses_to_df, export_groups_trainee_to_df
+from typing import Optional
 
 
 def read_data(params: dict):
@@ -19,15 +20,18 @@ def read_data(params: dict):
 
     courses = read_courses(
         file_master_course=params['file_master_course'],
-        file_master_course_sequence=params['file_master_course_sequence']
+        file_master_course_sequence=params['file_master_course_sequence'],
+        course_stream=params['course_stream']
     )
 
     groups, groups_trainee = read_trainees(
         file_master_trainee=params['file_master_trainee'],
         file_master_course_trainee=params['file_master_course_trainee'],
+        file_master_course=params['file_master_course'],
         report_name=params['report_name'],
         minimum_course_participant=params['minimum_course_participant'],
-        maximum_group_size=params['maximum_group_size']
+        maximum_group_size=params['maximum_group_size'],
+        course_stream=params['course_stream']
     )
 
     calendar, weekend_list = read_calendar(
@@ -103,32 +107,36 @@ def read_trainers(
 
 def read_courses(
     file_master_course: str,
-    file_master_course_sequence: str
+    file_master_course_sequence: str,
+    course_stream: Optional[list[str]] = None
 ):
     _df_course = pd.read_csv(file_master_course)
 
     _df_prereq = pd.read_csv(file_master_course_sequence)
-    # _df_prereq = _df_prereq[~(_df_prereq['is_course_valid'].str.contains('INVALID', na=False) | 
-    #                         _df_prereq['is_prerequisite_valid'].str.contains('INVALID', na=False))]
     _df_prereq = _df_prereq[
         _df_prereq['prerequisite_course_name'].notna() &
         (_df_prereq['prerequisite_course_name'].str.strip() != "")
     ]
 
+    if course_stream is not None:
+        _df_course = _df_course[_df_course["stream"].isin(course_stream)]
+
     # Build courses from CSV data
     _courses = []
     for _, course_row in _df_course.iterrows():
         course_name = course_row['course_name']
+        course_stream = course_row['stream']
         duration = math.ceil(course_row['duration_minutes'] / 60)  
 
         # Get prerequisites for this course from prerequisite dataframe
         prereqs = _df_prereq[_df_prereq['course_name'] == course_name]
         prerequisites = [] if prereqs.empty else prereqs['prerequisite_course_name'].tolist()
 
-        _courses.append(Course(name=course_name, duration=duration, prerequisites=prerequisites))
+        _courses.append(Course(name=course_name, stream=course_stream, duration=duration, prerequisites=prerequisites))
 
     courses = {
         course.name: {
+            "stream": course.stream,
             "dur": course.duration,
             "prereq": course.prerequisites
         } for course in _courses
@@ -142,10 +150,12 @@ def read_courses(
 def read_trainees(
     file_master_trainee: str,
     file_master_course_trainee: str,
+    file_master_course: str,
     report_name: str = 'report',
     minimum_course_participant: int = None,
     maximum_group_size: int = 30,
-    is_considering_shift: bool = False
+    is_considering_shift: bool = False,
+    course_stream: Optional[list[str]] = None
 ):
     _df_trainee = pd.read_csv(file_master_trainee)
     _df_trainee = _df_trainee.drop_duplicates(subset=["employee_id"])
@@ -156,6 +166,14 @@ def read_trainees(
             _df_enrollment.groupby("course_name")["employee_id"].nunique().loc[lambda s: s >= minimum_course_participant].index
         )
     ]
+
+    if course_stream is not None:
+        _df_course = pd.read_csv(file_master_course)
+        _df_course = _df_course[_df_course["stream"].isin(course_stream)]
+
+        _course_list = _df_course['course_name'].unique().tolist()
+        _df_enrollment = _df_enrollment[_df_enrollment["course_name"].isin(_course_list)]
+
 
     _trainees = []
     for _, trainee_row in _df_trainee.iterrows():

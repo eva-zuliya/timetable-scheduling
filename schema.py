@@ -15,6 +15,7 @@ class Trainer(BaseModel):
 
 class Course(BaseModel):
     name: str
+    stream: str
     duration: int
     prerequisites: list[str]
 

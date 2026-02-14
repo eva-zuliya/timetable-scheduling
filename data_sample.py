@@ -97,13 +97,14 @@ def read_courses(
     file_master_course_sequence: str
 ):
     _courses = [
-        Course(name="C1", duration=4, prerequisites=[]),
-        Course(name="C2", duration=4, prerequisites=["C1"]),
-        Course(name="C3", duration=4, prerequisites=["C1", "C2"]),
+        Course(name="C1", stream="WM", duration=4, prerequisites=[]),
+        Course(name="C2", stream="WM", duration=4, prerequisites=["C1"]),
+        Course(name="C3", stream="WM", duration=4, prerequisites=["C1", "C2"]),
     ]
 
     courses = {
         course.name: {
+            "stream": course.stream,
             "dur": course.duration,
             "prereq": course.prerequisites
         } for course in _courses
