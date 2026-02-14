@@ -132,7 +132,7 @@ def read_courses(
 
         # Get prerequisites for this course from prerequisite dataframe
         prereqs = _df_prereq[_df_prereq['course_name'] == course_name]
-        prerequisites = [] if prereqs.empty else prereqs['prerequisite_course_name'].tolist()
+        prerequisites = [] if prereqs.empty else prereqs['prerequisite_course_name'].drop_duplicates().tolist()
 
         _courses.append(Course(name=course_name, stream=course_stream, duration=duration, prerequisites=prerequisites))
 
@@ -173,7 +173,7 @@ def read_trainees(
         _df_course = pd.read_csv(file_master_course)
         _df_course = _df_course[_df_course["stream"].isin(course_stream)]
 
-        _course_list = _df_course['course_name'].unique().tolist()
+        _course_list = _df_course['course_name'].drop_duplicates().tolist()
         _df_enrollment = _df_enrollment[_df_enrollment["course_name"].isin(_course_list)]
 
 
@@ -189,7 +189,7 @@ def read_trainees(
             trainee_shift = "NS"
 
         # Get courses for this trainee from enrollment dataframe
-        enrolled_courses = _df_enrollment[_df_enrollment['employee_id'] == trainee_name]['course_name'].tolist()
+        enrolled_courses = _df_enrollment[_df_enrollment['employee_id'] == trainee_name]['course_name'].drop_duplicates().tolist()
 
         if enrolled_courses:  # Only include trainees with at least one course
             _trainees.append(
