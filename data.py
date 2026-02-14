@@ -173,7 +173,7 @@ def read_trainees(
         _df_course = pd.read_csv(file_master_course)
         _df_course = _df_course[_df_course["stream"].isin(course_stream)]
 
-        _course_list = _df_course['course_name'].unique().tolist()
+        _course_list = _df_course['course_name'].drop_duplicates().tolist()
         _df_enrollment = _df_enrollment[_df_enrollment["course_name"].isin(_course_list)]
 
 
