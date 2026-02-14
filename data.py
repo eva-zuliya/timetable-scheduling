@@ -237,7 +237,7 @@ def read_trainees(
 
     print("Len Trainees:", len(_trainees), "Len Groups:", len(groups))
 
-    return groups
+    return groups, _df_group_trainee
 
 
 def read_calendar(
