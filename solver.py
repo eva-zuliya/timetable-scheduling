@@ -52,7 +52,8 @@ def run_solver(params: dict):
             if course in G[group]["courses"]:
                 max_num_sessions += len(G[group]["subgroups"])  # Each subgroup in this group needs a session for this course
 
-        S[course] = list(range(max_num_sessions))
+        # S[course] = list(range(max_num_sessions))
+        S[course] = [0]
 
         # S could look like: {'C1': [0, 1, 2], 'C2': [0, 1]}
         # Where S['C1'] = [0,1,2] means there are 3 sessions for course 'C1'
@@ -357,15 +358,15 @@ def run_solver(params: dict):
     # ===============================
 
     # --- Minimize Open Sessions ---
-    total_open_sessions = model.NewIntVar(0, 100000, "total_open_sessions")
+    # total_open_sessions = model.NewIntVar(0, 100000, "total_open_sessions")
 
-    model.Add(
-        total_open_sessions ==
-        sum(
-            active_session[course, session]
-                for course in C for session in S[course]
-        )
-    )
+    # model.Add(
+    #     total_open_sessions ==
+    #     sum(
+    #         active_session[course, session]
+    #             for course in C for session in S[course]
+    #     )
+    # )
 
 
     # --- Minimize Daily Session Imbalance
@@ -430,7 +431,7 @@ def run_solver(params: dict):
 
 
     model.Minimize(
-        total_open_sessions * 100000 +
+        # total_open_sessions * 100000 +
         daily_imbalance * 1000 +
         trainer_imbalance
     )
