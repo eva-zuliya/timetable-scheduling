@@ -7,7 +7,7 @@ from utils import export_groups_courses_to_df, export_groups_trainee_to_df
 
 
 def read_data(params: dict):
-    venues, venue_list = read_venue(
+    venues, venue_list, virtual_venue_list = read_venue(
         file_master_venue=params['file_master_venue']
     )
 
@@ -43,12 +43,14 @@ def read_data(params: dict):
         'max_session_length': params['maximum_session_length'],
         'venues': venues,
         'venue_list': venue_list,
+        'virtual_venue_list': virtual_venue_list,
         'trainers': trainers,
         'eligible': eligible,
         'courses': courses,
         'groups': groups,
         'groups_trainee': group_trainee,
         'is_considering_shift': params['is_considering_shift'],
+        'is_using_global_sequence': params['is_using_global_sequence'],
         'calendar': calendar,
         'weekend_list': weekend_list
     }
@@ -58,19 +60,20 @@ def read_venue(
     file_master_venue: str
 ):
     _venues = [
-        Venue(name="V1", capacity=5),
-        Venue(name="V2", capacity=5),
-        Venue(name="V3", capacity=5),
-        Venue(name="V4", capacity=5),
-        Venue(name="V5", capacity=5)
+        Venue(name="V1", capacity=50, is_virtual=True),
+        Venue(name="V2", capacity=50, is_virtual=True),
+        Venue(name="V3", capacity=50, is_virtual=False),
+        Venue(name="V4", capacity=50, is_virtual=False),
+        Venue(name="V5", capacity=50, is_virtual=True)
     ]
 
     venues = {venue.name: venue.capacity for venue in _venues}
     venue_list = list(venues.keys())
+    virtual_venue_list = [venue.name for venue in _venues if venue.is_virtual]
 
     print("Len Venues:", len(venues), "Len Venue List:", len(venue_list))
 
-    return venues, venue_list
+    return venues, venue_list, virtual_venue_list
 
 
 def read_trainers(
@@ -81,7 +84,7 @@ def read_trainers(
         Trainer(name="T1", eligible=["C1", "C2"]),
         Trainer(name="T2", eligible=["C1", "C2", "C3"]),
         Trainer(name="T3", eligible=["C1", "C2", "C3"]),
-        Trainer(name="T4", eligible=["C1", "C2", "C3"]),
+        Trainer(name="T4", eligible=["C1", "C2", "C3", "C4"]),
     ]
 
     eligible = {(trainer.name, course): 1 for trainer in _trainers for course in trainer.eligible}
@@ -97,16 +100,18 @@ def read_courses(
     file_master_course_sequence: str
 ):
     _courses = [
-        Course(name="C1", stream="WM", duration=4, prerequisites=[]),
-        Course(name="C2", stream="WM", duration=4, prerequisites=["C1"]),
-        Course(name="C3", stream="WM", duration=4, prerequisites=["C1", "C2"]),
+        Course(name="C1", stream="WM", duration=4, prerequisites=[], global_sequence=[]),
+        Course(name="C2", stream="WM", duration=4, prerequisites=["C1"], global_sequence=[]),
+        Course(name="C3", stream="WM", duration=4, prerequisites=["C1", "C2"], global_sequence=[]),
+        Course(name="C4", stream="WM", duration=4, prerequisites=[], global_sequence=["C3"]),
     ]
 
     courses = {
         course.name: {
             "stream": course.stream,
             "dur": course.duration,
-            "prereq": course.prerequisites
+            "prereq": course.prerequisites,
+            "global_sequence": course.global_sequence
         } for course in _courses
     }
 
@@ -131,7 +136,7 @@ def read_trainees(
         Trainee(name="E5", courses=["C1", "C2"], shift="Non Shift", cycle="WDays"),
         Trainee(name="E6", courses=["C1", "C2"], shift="Non Shift", cycle="WDays"),
         Trainee(name="E7", courses=["C1", "C2"], shift="Shift 2", cycle="WEnd"),
-        Trainee(name="E8", courses=["C1", "C2", "C3"], shift="Shift 2", cycle="WEnd")
+        Trainee(name="E8", courses=["C1", "C2", "C3", "C4"], shift="Shift 2", cycle="WEnd")
     ]
 
     _groups = {}

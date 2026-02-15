@@ -19,6 +19,7 @@ class Course(BaseModel):
     stream: str
     duration: int
     prerequisites: list[str]
+    global_sequence: list[str]
 
 
 class Trainee(BaseModel):

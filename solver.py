@@ -25,9 +25,11 @@ def run_solver(params: dict):
     courses = data['courses']
     groups = data['groups']
     groups_trainee = data['groups_trainee']
-    is_considering_shift = data['is_considering_shift']
     calendar = data['calendar']
     weekend_list = data['weekend_list']
+
+    is_considering_shift = data['is_considering_shift']
+    is_using_global_sequence = data['is_using_global_sequence']
 
 
     model = cp_model.CpModel()
@@ -352,6 +354,25 @@ def run_solver(params: dict):
     # ===============================
     # PREREQUISITES (GLOBAL LEVEL)
     # ===============================
+    if is_using_global_sequence:
+        for course in C:
+            for prereq in C[course]["global_sequence"]:
+                print(course, prereq)
+
+                if prereq not in S or course not in S:
+                    continue
+
+                for s_course in S[course]:
+                    for s_pre in S[prereq]:
+
+                        model.Add(
+                            end_session[prereq, s_pre] <= start_session[course, s_course]
+                        ).OnlyEnforceIf(
+                            [
+                                active_session[prereq, s_pre],
+                                active_session[course, s_course]
+                            ]
+                        )
 
 
     # ===============================

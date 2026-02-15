@@ -56,7 +56,7 @@ def read_data(params: dict):
         'groups': groups,
         'groups_trainee': groups_trainee,
         'is_considering_shift': params['is_considering_shift'],
-        'calendar': calendar,
+        'is_using_global_sequence': params['is_using_global_sequence'],
         'calendar': calendar,
         'weekend_list': weekend_list
     }
@@ -126,6 +126,9 @@ def read_courses(
         (_df_prereq['prerequisite_course_name'].str.strip() != "")
     ]
 
+    if 'is_global_sequence' not in _df_prereq.columns:
+        _df_prereq['is_global_sequence'] = False
+
     if course_stream is not None:
         _df_course = _df_course[_df_course["stream"].isin(course_stream)]
 
@@ -140,13 +143,26 @@ def read_courses(
         prereqs = _df_prereq[_df_prereq['course_name'] == course_name]
         prerequisites = [] if prereqs.empty else prereqs['prerequisite_course_name'].drop_duplicates().tolist()
 
-        _courses.append(Course(name=course_name, stream=course_stream, duration=duration, prerequisites=prerequisites))
+        # Get global sequence for this course from prerequisite dataframe
+        seq = _df_prereq[(_df_prereq['course_name'] == course_name) & (_df_prereq['is_global_sequence'])]
+        sequence = [] if seq.empty else seq['prerequisite_course_name'].drop_duplicates().tolist()
+
+        _courses.append(
+            Course(
+                name=course_name,
+                stream=course_stream,
+                duration=duration,
+                prerequisites=prerequisites,
+                global_sequence=sequence
+            )
+        )
 
     courses = {
         course.name: {
             "stream": course.stream,
             "dur": course.duration,
-            "prereq": course.prerequisites
+            "prereq": course.prerequisites,
+            "global_sequence": course.global_sequence
         } for course in _courses
     }
 
