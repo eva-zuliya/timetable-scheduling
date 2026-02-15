@@ -6,4 +6,4 @@ timetable.md
 *.md
 export/
 data_source/
-params.json
+*.json
