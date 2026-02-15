@@ -91,8 +91,11 @@ def read_trainers(
 ):
     _df_trainer = pd.read_csv(file_master_trainer)
     _df_trainer = _df_trainer.drop_duplicates(subset=["trainer_id"])
+    _df_trainer['trainer_id'] = _df_trainer['trainer_id'].astype(str)
 
+    
     _df_eligible = pd.read_csv(file_master_course_trainer)
+    _df_eligible['trainer_id'] = _df_eligible['trainer_id'].astype(str)
 
     _trainers = []
     for _, trainer_row in _df_trainer.iterrows():
@@ -119,12 +122,19 @@ def read_courses(
     course_stream: Optional[list[str]] = None
 ):
     _df_course = pd.read_csv(file_master_course)
+    _df_course['course_name'] = _df_course['course_name'].str.strip()
+    _df_course['stream'] = _df_course['stream'].str.strip()
+
 
     _df_prereq = pd.read_csv(file_master_course_sequence)
     _df_prereq = _df_prereq[
         _df_prereq['prerequisite_course_name'].notna() &
         (_df_prereq['prerequisite_course_name'].str.strip() != "")
     ]
+
+    _df_prereq['course_name'] = _df_prereq['course_name'].str.strip()
+    _df_prereq['prerequisite_course_name'] = _df_prereq['prerequisite_course_name'].str.strip()
+    
 
     if 'is_global_sequence' not in _df_prereq.columns:
         _df_prereq['is_global_sequence'] = False
@@ -183,6 +193,7 @@ def read_trainees(
 ):
     _df_trainee = pd.read_csv(file_master_trainee)
     _df_trainee = _df_trainee.drop_duplicates(subset=["employee_id"])
+    _df_trainee['employee_id'] = _df_trainee['employee_id'].astype(str)
 
     _df_enrollment = pd.read_csv(file_master_course_trainee)
     _df_enrollment = _df_enrollment[
@@ -190,6 +201,9 @@ def read_trainees(
             _df_enrollment.groupby("course_name")["employee_id"].nunique().loc[lambda s: s >= minimum_course_participant].index
         )
     ]
+
+    _df_enrollment['employee_id'] = _df_enrollment['employee_id'].astype(str)
+    _df_enrollment['course_name'] = _df_enrollment['course_name'].str.strip()
 
     if course_stream is not None:
         _df_course = pd.read_csv(file_master_course)
