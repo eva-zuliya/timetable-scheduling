@@ -431,23 +431,45 @@ def run_solver(params: dict):
     model.Add(trainer_imbalance == max_load - min_load)
 
 
-    # --- Minimize Trainer Workload Imbalance ---
+    # --- Minimize Sessions on Virtual Rooms ---
     virtual_venue_sessions = []
-    for c in C:
-        for s in S[c]:
-            for v in virtual_venue_list:
+    for course in C:
+        for session in S[course]:
+            for venue in virtual_venue_list:
                 virtual_venue_sessions.append(
-                    venue_session[c, s, v]
+                    venue_session[course, session, venue]
                 )
 
     virtual_sessions = model.NewIntVar(0, 100000, "virtual_sessions")
     model.Add(virtual_sessions == sum(virtual_venue_sessions))
 
 
+    # # --- Minimize Sessions on Weekend ---
+    # if weekend_list:
+    #     weekend_flags = []
+    #     for course in C:
+    #         for session in S[course]:
+    #             for wd in weekend_list:
+
+    #                 b = model.NewBoolVar(f"weekend_{course}_{session}_{wd}")
+
+    #                 model.Add(day_session[course, session] == wd).OnlyEnforceIf(b)
+    #                 model.Add(day_session[course, session] != wd).OnlyEnforceIf(b.Not())
+
+    #                 # count only if session is active
+    #                 model.AddImplication(b, active_session[course, session])
+
+    #                 weekend_flags.append(b)
+
+    #     weekend_sessions = model.NewIntVar(0, 100000, "weekend_sessions")
+    #     model.Add(weekend_sessions == sum(weekend_flags))
+
+
     model.Minimize(
         # total_open_sessions * 100000 +
         daily_imbalance * 1000 +
         virtual_sessions * 100 +
+        # weekend_sessions * 100 +
         trainer_imbalance
     )
 
@@ -595,8 +617,6 @@ def run_solver(params: dict):
         df.to_csv(f"export/{params['report_name']}_schedule_detail.csv", index=False)
 
         print("\nResult has been exported.")
-        print(df['Venue'].unique().tolist())
-
 
         from collections import defaultdict
 
