@@ -19,6 +19,7 @@ def run_solver(params: dict):
     MAX_SESSION_LENGTH = data['max_session_length']+1
     venues = data['venues']
     venue_list = data['venue_list']
+    virtual_venue_list = data['virtual_venue_list']
     trainers = data['trainers']
     eligible = data['eligible']
     courses = data['courses']
@@ -430,9 +431,23 @@ def run_solver(params: dict):
     model.Add(trainer_imbalance == max_load - min_load)
 
 
+    # --- Minimize Trainer Workload Imbalance ---
+    virtual_venue_sessions = []
+    for c in C:
+        for s in S[c]:
+            for v in virtual_venue_list:
+                virtual_venue_sessions.append(
+                    venue_session[c, s, v]
+                )
+
+    virtual_sessions = model.NewIntVar(0, 100000, "virtual_sessions")
+    model.Add(virtual_sessions == sum(virtual_venue_sessions))
+
+
     model.Minimize(
         # total_open_sessions * 100000 +
         daily_imbalance * 1000 +
+        virtual_sessions * 100 +
         trainer_imbalance
     )
 
@@ -580,6 +595,7 @@ def run_solver(params: dict):
         df.to_csv(f"export/{params['report_name']}_schedule_detail.csv", index=False)
 
         print("\nResult has been exported.")
+        print(df['Venue'].unique().tolist())
 
 
         from collections import defaultdict

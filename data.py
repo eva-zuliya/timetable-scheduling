@@ -9,7 +9,7 @@ from typing import Optional
 
 
 def read_data(params: dict):
-    venues, venue_list = read_venue(
+    venues, venue_list, virtual_venue_list = read_venue(
         file_master_venue=params['file_master_venue'],
         buffer_capacity=params['buffer_capacity']
     )
@@ -49,6 +49,7 @@ def read_data(params: dict):
         'max_session_length': params['maximum_session_length'],
         'venues': venues,
         'venue_list': venue_list,
+        'virtual_venue_list': virtual_venue_list,
         'trainers': trainers,
         'eligible': eligible,
         'courses': courses,
@@ -67,16 +68,21 @@ def read_venue(
 ):
     _df_venue = pd.read_csv(file_master_venue)
     _venues = [
-        Venue(name=row['venue_name'], capacity=row['capacity']+buffer_capacity)
+        Venue(
+            name=row['venue_name'],
+            capacity=row['capacity']+buffer_capacity,
+            is_virtual=row['is_virtual'] if 'is_virtual' in row else False
+        )
         for _, row in _df_venue.iterrows()
     ]
 
     venues = {venue.name: venue.capacity for venue in _venues}
     venue_list = list(venues.keys())
+    virtual_venue_list = [venue.name for venue in _venues if venue.is_virtual]
 
     print("Len Venues:", len(venues), "Len Venue List:", len(venue_list))
 
-    return venues, venue_list
+    return venues, venue_list, virtual_venue_list
 
 
 def read_trainers(

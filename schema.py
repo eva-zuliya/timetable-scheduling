@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 class Venue(BaseModel):
     name: str
     capacity: int
+    is_virtual: bool = False
 
 
 class Trainer(BaseModel):
