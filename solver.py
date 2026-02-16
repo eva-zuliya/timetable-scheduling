@@ -16,7 +16,7 @@ def run_solver(params: dict):
     DAYS = data['days']
     HOURS_PER_DAY = data['hours_per_day']
     HORIZON = data['horizon']
-    MAX_SESSION_LENGTH = data['max_session_length']+1
+    MAX_SESSION_LENGTH = data['max_session_length']
     venues = data['venues']
     venue_list = data['venue_list']
     virtual_venue_list = data['virtual_venue_list']
@@ -224,19 +224,35 @@ def run_solver(params: dict):
                     dur = C[course]["dur"]
 
                     for session in S[course]:
-                        b = model.NewBoolVar(f"attend_{group}_{subgroup}_{course}_{session}_{day}")
 
-                        # b = 1 only if assigned AND session is on day d
-                        model.Add(
-                            day_session[course, session] == day
-                        ).OnlyEnforceIf(b)
-
-                        model.AddImplication(
-                            b,
-                            assign[group, subgroup, course, session]
+                        is_day = model.NewBoolVar(
+                            f"isday_{group}_{subgroup}_{course}_{session}_{day}"
                         )
 
-                        terms.append(dur * b)
+                        model.Add(
+                            day_session[course, session] == day
+                        ).OnlyEnforceIf(is_day)
+
+                        model.Add(
+                            day_session[course, session] != day
+                        ).OnlyEnforceIf(is_day.Not())
+
+                        attend_today = model.NewBoolVar(
+                            f"attend_{group}_{subgroup}_{course}_{session}_{day}"
+                        )
+
+                        # attend_today = assign AND is_day
+                        model.AddBoolAnd([
+                            assign[group, subgroup, course, session],
+                            is_day
+                        ]).OnlyEnforceIf(attend_today)
+
+                        model.AddBoolOr([
+                            assign[group, subgroup, course, session].Not(),
+                            is_day.Not()
+                        ]).OnlyEnforceIf(attend_today.Not())
+
+                        terms.append(dur * attend_today)
 
                 model.Add(sum(terms) <= MAX_SESSION_LENGTH)
 
