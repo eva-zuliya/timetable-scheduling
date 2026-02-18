@@ -197,6 +197,11 @@ def read_trainees(
     _df_trainee = _df_trainee.drop_duplicates(subset=["employee_id"])
     _df_trainee['employee_id'] = _df_trainee['employee_id'].astype(str)
 
+    if 'is_available_saturday' not in _df_trainee.columns:
+        _df_trainee['is_available_saturday'] = False
+        
+    _df_trainee['cycle'] = _df_trainee['is_available_saturday'].apply(lambda x: "WEnd" if x else "WDays")
+
     _df_enrollment = pd.read_csv(file_master_course_trainee)
     _df_enrollment = _df_enrollment[
         _df_enrollment["course_name"].isin(
@@ -218,6 +223,7 @@ def read_trainees(
     _trainees = []
     for _, trainee_row in _df_trainee.iterrows():
         trainee_name = trainee_row['employee_id']
+        trainee_cycle = trainee_row['cycle']
 
         if is_considering_shift:
             trainee_shift = trainee_row['shift']
@@ -235,7 +241,7 @@ def read_trainees(
                     name=trainee_name,
                     shift=trainee_shift,
                     courses=enrolled_courses,
-                    cycle="WDays"  # Later should be based on the master employee data
+                    cycle=trainee_cycle
                 )
             )
 
