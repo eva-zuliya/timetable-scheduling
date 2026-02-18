@@ -210,6 +210,31 @@ def run_solver(params: dict):
                                 model.Add(
                                     day_session[course, session] != wd
                                 ).OnlyEnforceIf(assign[group, subgroup, course, session])
+    
+
+    # # ===============================
+    # # VALID PERIOD CONSTRAINTS FOR COURSES
+    # # ===============================
+    # for course in C:
+    #     if course in S:
+    #         valid_start = C[course]["valid_start_date"]
+    #         valid_end = C[course]["valid_end_date"]
+
+    #         if valid_start:
+    #             valid_start_day = calendar.index[valid_start]
+
+    #             for session in S[course]:
+    #                 model.Add(
+    #                     day_session[course, session] >= valid_start_day
+    #                 ).OnlyEnforceIf(active_session[course, session])
+
+    #         if valid_end:
+    #             valid_end_day = calendar.index[valid_end]
+
+    #             for session in S[course]:
+    #                 model.Add(
+    #                     day_session[course, session] <= valid_end_day
+    #                 ).OnlyEnforceIf(active_session[course, session])
 
 
     # ===============================

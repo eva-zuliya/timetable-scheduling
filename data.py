@@ -172,7 +172,9 @@ def read_courses(
             "stream": course.stream,
             "dur": course.duration,
             "prereq": course.prerequisites,
-            "global_sequence": course.global_sequence
+            "global_sequence": course.global_sequence,
+            "valid_start_date": course.valid_start_date,
+            "valid_end_date": course.valid_end_date
         } for course in _courses
     }
 

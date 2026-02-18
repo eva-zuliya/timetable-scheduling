@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Literal
+from typing import Literal, Optional
 from datetime import datetime, timedelta
 
 
@@ -20,6 +20,8 @@ class Course(BaseModel):
     duration: int
     prerequisites: list[str]
     global_sequence: list[str]
+    valid_start_date: Optional[str] = None
+    valid_end_date: Optional[str] = None
 
 
 class Trainee(BaseModel):
@@ -66,6 +68,7 @@ class Date(BaseModel):
 
 class Calendar(BaseModel):
     dates: list[Date]
+    index: dict[str, int]
     holidays: list[str]
 
     def __init__(self, start_date: str, days: int, holidays: list[str] = ['2026-02-17']):
@@ -73,6 +76,7 @@ class Calendar(BaseModel):
         current = start
         added_days = 0
         dates = []
+        index = {}
         while added_days < days:
             if start in holidays:
                 continue
@@ -81,11 +85,16 @@ class Calendar(BaseModel):
                 date_str = current.strftime("%Y-%m-%d")
                 is_weekend = current.weekday() in (5, 6)  # 5=Saturday, 6=Sunday
                 dates.append(Date(date=date_str, is_weekend=is_weekend))
+                index[date_str] = added_days
                 added_days += 1
 
             current += timedelta(days=1)
 
-        super().__init__(dates=dates, holidays=holidays)
+        super().__init__(
+            dates=dates,
+            index=index,
+            holidays=holidays
+        )
 
     @property
     def weekend_index(self) -> list[int]:
