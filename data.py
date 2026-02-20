@@ -7,6 +7,7 @@ from schema import Venue, Trainer, Course, Trainee, Group, Calendar
 from utils import export_groups_courses_to_df, export_groups_trainee_to_df
 from typing import Optional
 
+COMPANIES = ["SMU HO", "HO"]
 
 def read_data(params: dict):
     venues, venue_list, virtual_venue_list = read_venue(
@@ -67,6 +68,7 @@ def read_venue(
     buffer_capacity: Optional[int] = 0
 ):
     _df_venue = pd.read_csv(file_master_venue)
+    _df_venue = _df_venue[_df_venue['company'].isin(COMPANIES)]
     _venues = [
         Venue(
             name=row['venue_name'],
@@ -92,21 +94,26 @@ def read_trainers(
     _df_trainer = pd.read_csv(file_master_trainer)
     _df_trainer = _df_trainer.drop_duplicates(subset=["trainer_id"])
     _df_trainer['trainer_id'] = _df_trainer['trainer_id'].astype(str)
-
+    _df_trainer = _df_trainer[_df_trainer['trainer_id'].astype(str).str.strip() != '']
+    
     
     _df_eligible = pd.read_csv(file_master_course_trainer)
     _df_eligible['trainer_id'] = _df_eligible['trainer_id'].astype(str)
 
     _trainers = []
     for _, trainer_row in _df_trainer.iterrows():
-        trainer_id = trainer_row['trainer_id']
-        trainer_name = trainer_row['trainer_name']
-        
-        # Get eligible courses for this trainer from eligibility dataframe
-        eligible_courses = _df_eligible[_df_eligible['trainer_id'] == trainer_id]['course_name'].drop_duplicates().tolist()
+        try:
+            trainer_id = trainer_row['trainer_id']
+            trainer_name = trainer_row['trainer_name']
+            
+            # Get eligible courses for this trainer from eligibility dataframe
+            eligible_courses = _df_eligible[_df_eligible['trainer_id'] == trainer_id]['course_name'].drop_duplicates().tolist()
 
-        if eligible_courses:  # Only include trainers with at least one eligible course
-            _trainers.append(Trainer(name=trainer_id, eligible=eligible_courses))
+            if eligible_courses:  # Only include trainers with at least one eligible course
+                _trainers.append(Trainer(name=trainer_id, eligible=eligible_courses))
+        except Exception as e:
+            print(f"Error processing trainer row: {trainer_row}, error: {e}")
+            continue
 
     eligible = {(trainer.name, course): 1 for trainer in _trainers for course in trainer.eligible}
     trainers = [trainer.name for trainer in _trainers]
@@ -123,7 +130,12 @@ def read_courses(
 ):
     _df_course = pd.read_csv(file_master_course)
     _df_course['course_name'] = _df_course['course_name'].str.strip()
+    _df_course = _df_course[_df_course['course_name'].astype(str).str.strip() != '']
     _df_course['stream'] = _df_course['stream'].str.strip()
+    if 'duration_minutes' not in _df_course.columns:
+        _df_course['duration_minutes'] = _df_course['duration']
+
+    _df_course['duration_minutes'] = pd.to_numeric(_df_course['duration_minutes'], errors='coerce').fillna(120)
 
 
     _df_prereq = pd.read_csv(file_master_course_sequence)
@@ -145,27 +157,31 @@ def read_courses(
     # Build courses from CSV data
     _courses = []
     for _, course_row in _df_course.iterrows():
-        course_name = course_row['course_name']
-        course_stream = course_row['stream']
-        duration = math.ceil(course_row['duration_minutes'] / 60)  
+        try:
+            course_name = course_row['course_name']
+            course_stream = course_row['stream']
+            duration = math.ceil(course_row['duration_minutes'] / 60)  
 
-        # Get prerequisites for this course from prerequisite dataframe
-        prereqs = _df_prereq[_df_prereq['course_name'] == course_name]
-        prerequisites = [] if prereqs.empty else prereqs['prerequisite_course_name'].drop_duplicates().tolist()
+            # Get prerequisites for this course from prerequisite dataframe
+            prereqs = _df_prereq[_df_prereq['course_name'] == course_name]
+            prerequisites = [] if prereqs.empty else prereqs['prerequisite_course_name'].drop_duplicates().tolist()
 
-        # Get global sequence for this course from prerequisite dataframe
-        seq = _df_prereq[(_df_prereq['course_name'] == course_name) & (_df_prereq['is_global_sequence'])]
-        sequence = [] if seq.empty else seq['prerequisite_course_name'].drop_duplicates().tolist()
+            # Get global sequence for this course from prerequisite dataframe
+            seq = _df_prereq[(_df_prereq['course_name'] == course_name) & (_df_prereq['is_global_sequence'])]
+            sequence = [] if seq.empty else seq['prerequisite_course_name'].drop_duplicates().tolist()
 
-        _courses.append(
-            Course(
-                name=course_name,
-                stream=course_stream,
-                duration=duration,
-                prerequisites=prerequisites,
-                global_sequence=sequence
+            _courses.append(
+                Course(
+                    name=course_name,
+                    stream=course_stream,
+                    duration=duration,
+                    prerequisites=prerequisites,
+                    global_sequence=sequence
+                )
             )
-        )
+        except Exception as e:
+            print(f"Error processing course row: {course_row}, error: {e}")
+            continue
 
     courses = {
         course.name: {
@@ -196,11 +212,16 @@ def read_trainees(
     _df_trainee = pd.read_csv(file_master_trainee)
     _df_trainee = _df_trainee.drop_duplicates(subset=["employee_id"])
     _df_trainee['employee_id'] = _df_trainee['employee_id'].astype(str)
+    _df_trainee = _df_trainee[_df_trainee['company'].isin(COMPANIES)]
+    _df_trainee = _df_trainee[_df_trainee['employee_id'].astype(str).str.strip() != '']
+    print(_df_trainee.columns)
+    print(_df_trainee.head())
 
     if 'is_available_saturday' not in _df_trainee.columns:
         _df_trainee['is_available_saturday'] = False
         
     _df_trainee['cycle'] = _df_trainee['is_available_saturday'].apply(lambda x: "WEnd" if x else "WDays")
+    _df_trainee['cycle'] = 'WEnd'
 
     _df_enrollment = pd.read_csv(file_master_course_trainee)
     _df_enrollment = _df_enrollment[
@@ -210,40 +231,59 @@ def read_trainees(
     ]
 
     _df_enrollment['employee_id'] = _df_enrollment['employee_id'].astype(str)
+    print('STITCHING POINT', file_master_course, file_master_course_trainee)
+    print(len(_df_enrollment['course_name'].unique().tolist()), len(_df_enrollment['employee_id'].unique().tolist()))
+    # print(_df_enrollment['course_exist'].unique().tolist())
+    print(_df_enrollment[_df_enrollment['employee_id'] == '2160'])
+    print("\n\n", len(_df_enrollment[_df_enrollment['employee_id'] == '2160']), "\n\n")
     _df_enrollment['course_name'] = _df_enrollment['course_name'].str.strip()
+    _df_enrollment = _df_enrollment[_df_enrollment['course_exist'] == 'TRUE']
+    # print(_df_enrollment.columns)
+    # print(_df_enrollment.head())
 
-    if course_stream is not None:
-        _df_course = pd.read_csv(file_master_course)
-        _df_course = _df_course[_df_course["stream"].isin(course_stream)]
+    # if course_stream is not None:
+    #     _df_course = pd.read_csv(file_master_course)
+    #     _df_course = _df_course[_df_course["stream"].isin(course_stream)]
 
-        _course_list = _df_course['course_name'].drop_duplicates().tolist()
-        _df_enrollment = _df_enrollment[_df_enrollment["course_name"].isin(_course_list)]
+    #     _course_list = _df_course['course_name'].drop_duplicates().tolist()
+    #     _df_enrollment = _df_enrollment[_df_enrollment["course_name"].isin(_course_list)]
 
+    # print("AFTER")
+    # print(_df_enrollment.columns)
+    # print(_df_enrollment.head())
 
     _trainees = []
     for _, trainee_row in _df_trainee.iterrows():
-        trainee_name = trainee_row['employee_id']
-        trainee_cycle = trainee_row['cycle']
+        try:
+            trainee_name = trainee_row['employee_id']
+            trainee_cycle = trainee_row['cycle']
 
-        if is_considering_shift:
-            trainee_shift = trainee_row['shift']
-            if pd.isna(trainee_shift) or str(trainee_shift).strip() == "":
-                trainee_shift = "Non Shift"
-        else:
-            trainee_shift = "NS"
+            if is_considering_shift:
+                trainee_shift = trainee_row['shift']
+                if pd.isna(trainee_shift) or str(trainee_shift).strip() == "":
+                    trainee_shift = "Non Shift"
+            else:
+                trainee_shift = "NS"
 
-        # Get courses for this trainee from enrollment dataframe
-        enrolled_courses = _df_enrollment[_df_enrollment['employee_id'] == trainee_name]['course_name'].drop_duplicates().tolist()
+            # Get courses for this trainee from enrollment dataframe
+            enrolled_courses = _df_enrollment[_df_enrollment['employee_id'] == trainee_name]['course_name'].drop_duplicates().tolist()
+            if trainee_name == '2160':
+                # print("ENROLLED COURSES FOR TRAINEE 2160:", enrolled_courses)
+                print("Processing trainee:", trainee_name, "Shift:", trainee_shift, "Cycle:", trainee_cycle, "Enrolled Courses:", len(enrolled_courses))
 
-        if enrolled_courses:  # Only include trainees with at least one course
-            _trainees.append(
-                Trainee(
-                    name=trainee_name,
-                    shift=trainee_shift,
-                    courses=enrolled_courses,
-                    cycle=trainee_cycle
+            if enrolled_courses:  # Only include trainees with at least one course
+                _trainees.append(
+                    Trainee(
+                        name=trainee_name,
+                        shift=trainee_shift,
+                        courses=enrolled_courses,
+                        cycle=trainee_cycle
+                    )
                 )
-            )
+                # print("Added trainee:", trainee_name, "Shift:", trainee_shift, "Cycle:", trainee_cycle, "Courses:", enrolled_courses)
+        except Exception as e:
+            print(f"Error processing trainee row: {trainee_row}, error: {e}")
+            continue
 
     _groups = {}
     for trainee in _trainees:

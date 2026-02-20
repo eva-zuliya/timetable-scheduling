@@ -136,7 +136,7 @@ def run_solver(params: dict):
                     assign[group, subgroup, course, session] = model.NewBoolVar(f"assign_{group}_{subgroup}_{course}_{session}")
                     assign_vars.append(assign[group, subgroup, course, session])
 
-                model.Add(sum(assign_vars) == 1)
+                model.Add(sum(assign_vars) <= 1)
 
 
     # ===============================
@@ -422,15 +422,15 @@ def run_solver(params: dict):
     # ===============================
 
     # --- Minimize Open Sessions ---
-    # total_open_sessions = model.NewIntVar(0, 100000, "total_open_sessions")
+    total_open_sessions = model.NewIntVar(0, 100000, "total_open_sessions")
 
-    # model.Add(
-    #     total_open_sessions ==
-    #     sum(
-    #         active_session[course, session]
-    #             for course in C for session in S[course]
-    #     )
-    # )
+    model.Add(
+        total_open_sessions ==
+        sum(
+            active_session[course, session]
+                for course in C for session in S.get(course, [])
+        )
+    )
 
 
     # --- Minimize Daily Session Imbalance
@@ -531,10 +531,18 @@ def run_solver(params: dict):
     #     model.Add(weekend_sessions == sum(weekend_flags))
 
 
-    model.Minimize(
-        # total_open_sessions * 100000 +
-        daily_imbalance * 1000 +
-        virtual_sessions * 100 +
+    # model.Minimize(
+    #     # total_open_sessions * 100000 +
+    #     daily_imbalance * 1000 +
+    #     virtual_sessions * 100 +
+    #     # weekend_sessions * 100 +
+    #     trainer_imbalance
+    # )
+
+    model.maximize(
+        total_open_sessions * 100000 -
+        daily_imbalance * 1000 -
+        virtual_sessions * 100 -
         # weekend_sessions * 100 +
         trainer_imbalance
     )
