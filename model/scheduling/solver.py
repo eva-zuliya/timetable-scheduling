@@ -412,6 +412,58 @@ def run_solver(params: ModelParams):
 
 
     # ===============================
+    # TRAINER: MAX 1 COMPANY PER DAY
+    # ===============================
+
+    companies = list(set(v.company for v in V.values()))
+    trainer_day_company = {}
+
+    for trainer in T:
+        for day in range(DAYS):
+            for company in companies:
+                trainer_day_company[trainer, day, company] = model.NewBoolVar(
+                    f"trainer_{trainer}_day_{day}_company_{company}"
+                )
+
+        # Link sessions
+        for course in C:
+            if course not in S:
+                continue
+
+            for session in S[course]:
+
+                if (course, session, trainer) not in trainer_session:
+                    continue
+
+                for venue in V.values():
+
+                    company = venue.company
+
+                    # For each day, link via reification
+                    for day in range(DAYS):
+
+                        # If trainer assigned AND venue chosen
+                        # AND session is on this day
+                        # → activate trainer_day_company
+                        model.Add(
+                            day_session[course, session] == day
+                        ).OnlyEnforceIf([
+                            trainer_session[course, session, trainer],
+                            venue_session[course, session, venue.name],
+                            trainer_day_company[trainer, day, company]
+                        ])
+
+        # Enforce max 1 company per day
+        for day in range(DAYS):
+            model.Add(
+                sum(
+                    trainer_day_company[trainer, day, company]
+                    for company in companies
+                ) <= 1
+            )
+
+
+    # ===============================
     # OBJECTIVES: MAXIMIZE SHARED SESSIONS + EVEN DAILY DISTRIBUTION
     # ===============================
 
