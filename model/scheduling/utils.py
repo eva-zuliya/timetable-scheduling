@@ -2,6 +2,56 @@ from .schema import Group
 import pandas as pd
 
 
+def week_to_horizon_slots(
+    week_groups: dict[int, list[int]],
+    week_shifts: dict[int, int],   # {week_index: shift}
+    max_day_working_hours: int
+):
+
+    # ✅ If all weeks are NonShift (0), no restriction needed
+    if all(shift == 0 for shift in week_shifts.values()):
+        return None
+
+    valid_slots = []
+    half = max_day_working_hours // 2
+
+    for week_idx, shift in week_shifts.items():
+
+        if week_idx not in week_groups:
+            continue
+
+        for day_index in week_groups[week_idx]:
+
+            day_start = day_index * max_day_working_hours
+
+            # NonShift → full day
+            if shift == 0:
+                valid_slots.extend(
+                    range(day_start,
+                          day_start + max_day_working_hours)
+                )
+
+            # Overlap Shift1 → use second half
+            elif shift == 1:
+                valid_slots.extend(
+                    range(day_start + half,
+                          day_start + max_day_working_hours)
+                )
+
+            # Overlap Shift2 → use first half
+            elif shift == 2:
+                valid_slots.extend(
+                    range(day_start,
+                          day_start + half)
+                )
+
+            # Shift3 → no slots
+            elif shift == 3:
+                continue
+
+    return valid_slots
+
+
 def export_groups_trainee_to_df(groups: list[Group], report_name: str) -> pd.DataFrame:
     rows = []
 

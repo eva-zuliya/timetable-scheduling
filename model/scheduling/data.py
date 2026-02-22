@@ -11,7 +11,9 @@ from .utils import *
 
 
 def read_data(params: ModelParams) -> ModelInput:
-    course_batches, course_batches_mapping = read_courses(params)
+    calendar = read_calendar(params)
+
+    course_batches, course_batches_mapping = read_courses(params, calendar)
 
     trainers = read_trainers(params, course_batches_mapping)
 
@@ -30,7 +32,7 @@ def read_data(params: ModelParams) -> ModelInput:
     print("\n", highlight(json.dumps(print_group, indent=4), lexers.JsonLexer(), formatters.TerminalFormatter()), "\n")
 
     return ModelInput(
-        calendar=read_calendar(params),
+        calendar=calendar,
         venues=read_venue(params),
         trainers=trainers,
         courses=course_batches,
@@ -61,7 +63,7 @@ def read_venue(params: ModelParams):
     return venues
 
 
-def read_courses(params: ModelParams):
+def read_courses(params: ModelParams, calendar: Calendar):
     _df_course = pd.read_csv(params.file_master_course)
     _df_course['course_name'] = _df_course['course_name'].str.strip()
     _df_course = _df_course[_df_course['course_name']!= '']
@@ -152,6 +154,8 @@ def read_courses(params: ModelParams):
             batches_mapping.setdefault(key, []).append(batch_dict)
 
 
+    week_groups = Calendar.week_groups
+
     course_batches: dict[str, CourseBatch] = {}
     course_batches_mapping: dict[str, list[str]] = {}
     for course in courses.values():
@@ -159,10 +163,23 @@ def read_courses(params: ModelParams):
         batches = batches_mapping.get((course.company, course.name), [default_batch])
 
         for batch_info in batches:
+            w1, w2, w3, w4 = batch_info["week1"], batch_info["week2"], batch_info["week3"], batch_info["week4"]
+
+            valid_start_domain = week_to_horizon_slots(
+                week_groups,
+                {
+                    0:w1,
+                    1:w2,
+                    2:w3,
+                    3:w4
+                },
+                params.hours_per_day
+            )
+
             batch = CourseBatch(
                 **course.model_dump(),
                 batch_number=batch_info["batch_no"],
-                valid_start_domain=None
+                valid_start_domain=valid_start_domain
             )
 
             course_batches[batch.id] = batch

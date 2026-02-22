@@ -59,11 +59,20 @@ def run_solver(params: ModelParams):
     for course in C:
         if course in S:
             dur = C[course].duration
+            start_session_valid_domain = C[course].valid_start_domain
 
             for session in S[course]:
                 active_session[course, session] = model.NewBoolVar(f"active_{course}_{session}")
 
-                start_session[course, session] = model.NewIntVar(0, HORIZON, f"start_{course}_{session}")
+                if start_session_valid_domain is not None:
+                    start = model.NewIntVarFromDomain(
+                        cp_model.Domain.FromValues(start_session_valid_domain),
+                        f"start_{course}_{session}"
+                    )
+
+                else:
+                    start_session[course, session] = model.NewIntVar(0, HORIZON, f"start_{course}_{session}")
+
                 end_session[course, session] = model.NewIntVar(0, HORIZON, f"end_{course}_{session}")
 
                 model.Add(

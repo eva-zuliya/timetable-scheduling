@@ -1,6 +1,9 @@
 from pydantic import BaseModel
 from typing import Literal, Optional
 from datetime import datetime, timedelta
+from collections import defaultdict
+from datetime import datetime, timedelta
+
 
 class Venue(BaseModel):
     company: str
@@ -90,6 +93,7 @@ class Calendar(BaseModel):
         index = {}
         while added_days < days:
             if start in holidays:
+                current += timedelta(days=1)
                 continue
 
             if current.weekday() != 6:  # 6 = Sunday
@@ -110,6 +114,33 @@ class Calendar(BaseModel):
     @property
     def weekend_index(self) -> list[int]:
         return [i for i, d in enumerate(self.dates) if d.is_weekend]
+
+    @property
+    def week_groups(self) -> dict[int, list[int]]:
+        """
+        Returns:
+            week_index -> list of day indices (calendar index)
+        Week starts on Monday.
+        """
+
+        week_groups = defaultdict(list)
+
+        # Convert date strings back to datetime
+        date_objs = [
+            datetime.strptime(d.date, "%Y-%m-%d")
+            for d in self.dates
+        ]
+
+        # Anchor to first Monday
+        first_date = date_objs[0]
+        first_monday = first_date - timedelta(days=first_date.weekday())
+
+        for idx, dt in enumerate(date_objs):
+            delta_days = (dt - first_monday).days
+            week_idx = delta_days // 7
+            week_groups[week_idx].append(idx)
+
+        return dict(week_groups)
 
 
 class ModelInput(BaseModel):
