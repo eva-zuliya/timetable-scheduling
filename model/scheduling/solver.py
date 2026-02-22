@@ -1,5 +1,6 @@
 import pandas as pd
 from ortools.sat.python import cp_model
+from schema import ModelParams
 from .schema import *
 from .utils import hour_index_to_time
 import datetime

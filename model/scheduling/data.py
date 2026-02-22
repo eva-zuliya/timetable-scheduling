@@ -5,6 +5,7 @@ from pygments import highlight, lexers, formatters
 from pydantic import BaseModel
 from typing import Optional
 from .schema import *
+from schema import ModelParams
 from .utils import *
 
 

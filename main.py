@@ -2,7 +2,7 @@ import json
 import os
 # from solver import run_solver
 from schema import ModelParams
-# from model.batching.solver import 
+from model.batching.solver import run_solver as batching_solver
 from model.scheduling.solver import run_solver as scheduling_solver
 
 from dotenv import load_dotenv
@@ -16,7 +16,9 @@ if __name__ == "__main__":
         params = json.load(f)
         params = ModelParams(**params)
 
-    if params.is_splitting_batch:
-        params.file_master_course_batch = f"{params.report_name}_batch"
+    # if params.is_splitting_batch:
+    #     params.file_master_course_batch = f"{params.report_name}_batch"
 
-    scheduling_solver(params)
+    # scheduling_solver(params)
+
+    batching_solver(params)
