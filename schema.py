@@ -3,7 +3,41 @@ from typing import Literal, Optional
 from datetime import datetime, timedelta
 
 
+class ModelParams(BaseModel):
+    report_name: str = "report"
+
+    file_master_venue: str
+    file_master_trainer: str
+    file_master_venue: str
+    file_master_trainer: str
+    file_master_course: str
+    file_master_trainee: str
+    file_master_course_trainer: str
+    file_master_course_sequence: str
+    file_master_course_trainee: str
+
+    minimum_course_participant: int = 0
+    maximum_group_size: int = 2000
+
+    start_date: str
+    days: int
+    hours_per_day: int = 8
+    maximum_session_length: int = 5
+    buffer_capacity: int = 0
+    default_course_duration: int = 2  # in hour
+
+    is_using_global_sequence: bool = True
+    is_considering_shift: bool = False
+
+    course_stream: Optional[list[str]] = None
+    companies: Optional[list[str]] = None
+
+    max_time_in_seconds: int = 100
+    num_search_workers: int = 8
+
+
 class Venue(BaseModel):
+    company: str
     name: str
     capacity: int
     is_virtual: bool = False
@@ -15,6 +49,7 @@ class Trainer(BaseModel):
 
 
 class Course(BaseModel):
+    company: str
     name: str
     stream: str
     duration: int
@@ -24,7 +59,14 @@ class Course(BaseModel):
     valid_end_date: Optional[str] = None
 
 
+class CourseBatch(BaseModel):
+    id: str
+    valid_start_interval: list[int]
+    course: Course
+
+
 class Trainee(BaseModel):
+    company:str
     name: str
     shift: Literal["Non Shift", "Shift 1", "Shift 2", "NS"]
     courses: list[str]
@@ -47,7 +89,7 @@ class Trainee(BaseModel):
 
 class Group(BaseModel):
     name: str
-    courses: list[str]
+    courses: list[str]  # Id of the CourseBatch
     trainees: list[str]
     subgroup: dict[str, list[str]] = None
     shift: Literal["Non Shift", "Shift 1", "Shift 2", "NS"]
@@ -99,3 +141,11 @@ class Calendar(BaseModel):
     @property
     def weekend_index(self) -> list[int]:
         return [i for i, d in enumerate(self.dates) if d.is_weekend]
+
+
+class ModelInput(BaseModel):
+    calendar: Calendar
+    venues: dict[str, Venue]
+    trainers: dict[str, Trainer]
+    courses: dict[str, Course]
+    groups: dict[str, Group]
