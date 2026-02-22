@@ -1,5 +1,6 @@
 import pandas as pd
 from ortools.sat.python import cp_model
+from pandas.io.sql import com
 from schema import ModelParams
 from .schema import *
 from .utils import hour_index_to_time
@@ -318,22 +319,24 @@ def run_solver(params: ModelParams):
     # VENUE NO-OVERLAP
     # ===============================
     for venue in V:
+        company = V[venue].company
         interval_session = []
 
         for course in C:
-            if course in S:
-                dur = C[course].duration
+            if C[course].company == company:
+                if course in S:
+                    dur = C[course].duration
 
-                for session in S[course]:
-                    interval = model.NewOptionalIntervalVar(
-                        start_session[course, session],
-                        dur,
-                        end_session[course, session],
-                        venue_session[course, session, venue],
-                        f"interval_venue_{course}_{session}_{venue}"
-                    )
+                    for session in S[course]:
+                        interval = model.NewOptionalIntervalVar(
+                            start_session[course, session],
+                            dur,
+                            end_session[course, session],
+                            venue_session[course, session, venue],
+                            f"interval_venue_{course}_{session}_{venue}"
+                        )
 
-                    interval_session.append(interval)
+                        interval_session.append(interval)
 
         if interval_session:
             model.AddNoOverlap(interval_session)
