@@ -342,8 +342,6 @@ def read_trainees(params: ModelParams, course_batches_mapping: dict[str, list[st
 
         _groups[group_key]["trainees"].append(trainee.name)
 
-    # _groups = [Group(**group) for group in _groups.values()]
-
     groups = {}
     for value in _groups.values():
         group = Group(**value)
