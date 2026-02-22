@@ -19,6 +19,9 @@ def read_data(params: ModelParams) -> ModelInput:
     print("\n", highlight(json.dumps(print_trainers, indent=4), lexers.JsonLexer(), formatters.TerminalFormatter()), "\n")
 
     groups = read_trainees(params, course_batches_mapping)
+    course_list = set(course_batches.keys())
+    for key, group in groups.items():
+        groups[key].courses = [x for x in group.courses if x in course_list]
 
     print_group = {group.name: group.model_dump() for group in groups.values()}
     for key in list(print_group.keys()):
@@ -84,6 +87,13 @@ def read_courses(params: ModelParams):
 
     if params.course_stream is not None:
         _df_course = _df_course[_df_course["stream"].isin(params.course_stream)]
+    
+
+    list_course_name = _df_course['course_name'].unique().tolist()
+    _df_prereq = _df_prereq[
+        (_df_prereq['course_name'].isin(list_course_name)) &
+        (_df_prereq['prerequisite_course_name'].isin(list_course_name))
+    ]
 
     courses = {}
     for _, course_row in _df_course.iterrows():
@@ -99,7 +109,7 @@ def read_courses(params: ModelParams):
             seq = _df_prereq[(_df_prereq['course_name'] == course_name) & (_df_prereq['is_global_sequence'])]
             sequence = [] if seq.empty else seq['prerequisite_course_name'].drop_duplicates().tolist()
 
-            courses[course_name] = Course(
+            courses[course_company, course_name] = Course(
                 company=course_company,
                 name=course_name,
                 stream=course_stream,

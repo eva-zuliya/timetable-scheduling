@@ -36,18 +36,15 @@ def run_solver(params: ModelParams):
     # ===============================
     # For each course, make a session for every subgroup in every group that takes that course.
     S = {}
-    for course in C:
-        max_num_sessions = 0
-        for group in G:
-            if course in G[group].courses:
-                max_num_sessions += len(G[group].trainees)  # Each subgroup in this group needs a session for this course
-
-        if max_num_sessions>0:
-            S[course] = [0]
-
-        # S could look like: {'C1': [0, 1, 2], 'C2': [0, 1]}
-        # Where S['C1'] = [0,1,2] means there are 3 sessions for course 'C1'
-
+    unique_trained_courses = list(
+        dict.fromkeys(
+            course
+            for group in G.values()
+            for course in group.courses if course in C
+        )
+    )
+    for course in unique_trained_courses:
+        S[course] = [0]
 
     # ===============================
     # SESSION VARIABLES
