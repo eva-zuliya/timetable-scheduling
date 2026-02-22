@@ -14,9 +14,16 @@ def read_data(params: ModelParams) -> ModelInput:
     course_batches, course_batches_mapping = read_courses(params)
 
     trainers = read_trainers(params, course_batches_mapping)
+
+    print_trainers = {trainer.name: trainer.model_dump() for trainer in trainers.values()}
+    print("\n", highlight(json.dumps(print_trainers, indent=4), lexers.JsonLexer(), formatters.TerminalFormatter()), "\n")
+
     groups = read_trainees(params, course_batches_mapping)
 
     print_group = {group.name: group.model_dump() for group in groups.values()}
+    for key in list(print_group.keys()):
+        print_group[key]["trainees"] = len(print_group[key]["trainees"])
+
     print("\n", highlight(json.dumps(print_group, indent=4), lexers.JsonLexer(), formatters.TerminalFormatter()), "\n")
 
     return ModelInput(
@@ -138,6 +145,7 @@ def read_courses(params: ModelParams):
     course_batches: dict[str, CourseBatch] = {}
     course_batches_mapping: dict[str, list[str]] = {}
     for course in courses.values():
+        course_batches_mapping[course.name] = []
         batches = batches_mapping.get((course.company, course.name), [default_batch])
 
         for batch_info in batches:
@@ -148,7 +156,7 @@ def read_courses(params: ModelParams):
             )
 
             course_batches[batch.id] = batch
-            course_batches_mapping[course.name] = [batch.id]
+            course_batches_mapping[course.name].append(batch.id)
 
     # Updating prerequsites and global sequence with batch id
     for batch_id, batch in course_batches.items():
@@ -232,6 +240,16 @@ def read_trainees(params: ModelParams, course_batches_mapping: dict[str, list[st
         _course_list = _df_course['course_name'].drop_duplicates().tolist()
         _df_enrollment = _df_enrollment[_df_enrollment["course_name"].isin(_course_list)]
 
+    
+    if params.file_master_course_batch is not None:
+        dfs = []
+        for file in params.file_master_course_batch:
+            dfs.append(pd.read_csv(file))
+
+        _df_batch = pd.concat(dfs, ignore_index=True)
+        batch_lookup = _df_batch.set_index(["company", "course_name", "trainee_id"])["batch_no"]
+
+
     _trainees = []
     for _, trainee_row in _df_trainee.iterrows():
         try:
@@ -250,7 +268,17 @@ def read_trainees(params: ModelParams, course_batches_mapping: dict[str, list[st
             enrolled_courses = _df_enrollment[_df_enrollment['employee_id'] == trainee_name]['course_name'].drop_duplicates().tolist()
 
             if enrolled_courses:  # Only include trainees with at least one course
-                enrolled_courses_batches = [item for k in enrolled_courses for item in course_batches_mapping[k]]
+                enrolled_courses_batches = []
+                for course in enrolled_courses:
+                    if params.file_master_course_batch is None:
+                        batch_no = 1
+                    
+                    else:
+                        batch_no = batch_lookup.get((trainee_company, course, trainee_name), 1)
+                    
+                    enrolled_courses_batches.append(
+                        f"[{trainee_company}]-[{course}]-[{batch_no}]"
+                    )
 
                 _trainees.append(
                     Trainee(
@@ -262,6 +290,7 @@ def read_trainees(params: ModelParams, course_batches_mapping: dict[str, list[st
                     )
                 )
                 # print("Added trainee:", trainee_name, "Shift:", trainee_shift, "Cycle:", trainee_cycle, "Courses:", enrolled_courses)
+
         except Exception as e:
             # print(f"Error processing trainee row: {trainee_row}, error: {e}")
             continue
