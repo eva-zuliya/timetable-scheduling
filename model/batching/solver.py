@@ -2,7 +2,9 @@ from ortools.sat.python import cp_model
 from schema import ModelParams
 from .data import read_data
 from schema import *
+
 import pandas as pd
+pd.set_option("display.max_colwidth", None)
 
 
 def run_solver(params: ModelParams):
@@ -203,7 +205,14 @@ def run_solver(params: ModelParams):
                         batch_counter += 1  # increment only if batch used
 
             df = pd.DataFrame(rows)
-            print(df)
+            if not df.empty:
+                pivot = df.groupby('course_name').agg(
+                    unique_batch_count=('batch_no', 'nunique'),
+                    trainee_count=('trainee_id', 'nunique')
+                ).reset_index()
+                print("\nPivot table (course_name, count of unique batch, count of trainees):\n", pivot)
+            
+            # print(df)
             dfs_batch[company] = df.copy()
 
         else:
