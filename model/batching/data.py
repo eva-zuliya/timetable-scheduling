@@ -13,9 +13,11 @@ def read_data(params: ModelParams, company: str) -> ModelInput:
     print_group = {group.name: group.model_dump() for group in courses.values()}
     for key in list(print_group.keys()):
         print_group[key]["trainees"] = len(print_group[key]["trainees"])
+        print_group[key]["max_batches"] = courses[key].max_batches
 
     print("\n", highlight(json.dumps(print_group, indent=4), lexers.JsonLexer(), formatters.TerminalFormatter()), "\n")
 
+    print("Len Courses: ", len(courses))
 
     return ModelInput(
         courses=courses,

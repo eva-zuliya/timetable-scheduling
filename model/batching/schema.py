@@ -10,11 +10,11 @@ class CourseStats(BaseModel):
     count_trainee: int
     count_trainers: int
     max_venue_capacity_available: int
-    min_batches: int = 5
+    min_batches: int = 2
     
     @property
     def max_batches(self):
-        if self.count_trainers <= self.max_venue_capacity_available:
+        if self.count_trainee <= self.max_venue_capacity_available:
             return self.min_batches
         
         trainee_per_trainer = math.ceil(self.count_trainee/self.count_trainers)
