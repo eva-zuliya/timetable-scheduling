@@ -415,7 +415,7 @@ def run_solver(params: ModelParams):
     # TRAINER: MAX 1 COMPANY PER DAY
     # ===============================
     if params.companies is not None and len(params.companies)>1:
-        
+
         companies = list(set(v.company for v in V.values()))
         trainer_day_company = {}
 
