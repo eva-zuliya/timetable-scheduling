@@ -8,26 +8,6 @@ from data import read_data
 
 def run_solver(params: ModelParams):
     data = read_data(params)
-
-    # DAYS = data['days']
-    # HOURS_PER_DAY = data['hours_per_day']
-    # HORIZON = data['horizon']
-    # MAX_SESSION_LENGTH = data['max_session_length']
-    # venues = data['venues']
-    # venue_list = data['venue_list']
-    # virtual_venue_list = data['virtual_venue_list']
-    # trainers = data['trainers']
-    # eligible = data['eligible']
-    # courses = data['courses']
-    # groups = data['groups']
-    # groups_trainee = data['groups_trainee']
-    # calendar = data['calendar']
-    # weekend_list = data['weekend_list']
-
-    # is_considering_shift = data['is_considering_shift']
-    # is_using_global_sequence = data['is_using_global_sequence']
-
-
     model = cp_model.CpModel()
 
     # ===============================
