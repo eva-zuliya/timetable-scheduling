@@ -414,53 +414,54 @@ def run_solver(params: ModelParams):
     # ===============================
     # TRAINER: MAX 1 COMPANY PER DAY
     # ===============================
+    if params.companies is not None and len(params.companies)>1:
+        
+        companies = list(set(v.company for v in V.values()))
+        trainer_day_company = {}
 
-    companies = list(set(v.company for v in V.values()))
-    trainer_day_company = {}
+        for trainer in T:
+            for day in range(DAYS):
+                for company in companies:
+                    trainer_day_company[trainer, day, company] = model.NewBoolVar(
+                        f"trainer_{trainer}_day_{day}_company_{company}"
+                    )
 
-    for trainer in T:
-        for day in range(DAYS):
-            for company in companies:
-                trainer_day_company[trainer, day, company] = model.NewBoolVar(
-                    f"trainer_{trainer}_day_{day}_company_{company}"
-                )
-
-        # Link sessions
-        for course in C:
-            if course not in S:
-                continue
-
-            for session in S[course]:
-
-                if (course, session, trainer) not in trainer_session:
+            # Link sessions
+            for course in C:
+                if course not in S:
                     continue
 
-                for venue in V.values():
+                for session in S[course]:
 
-                    company = venue.company
+                    if (course, session, trainer) not in trainer_session:
+                        continue
 
-                    # For each day, link via reification
-                    for day in range(DAYS):
+                    for venue in V.values():
 
-                        # If trainer assigned AND venue chosen
-                        # AND session is on this day
-                        # → activate trainer_day_company
-                        model.Add(
-                            day_session[course, session] == day
-                        ).OnlyEnforceIf([
-                            trainer_session[course, session, trainer],
-                            venue_session[course, session, venue.name],
-                            trainer_day_company[trainer, day, company]
-                        ])
+                        company = venue.company
 
-        # Enforce max 1 company per day
-        for day in range(DAYS):
-            model.Add(
-                sum(
-                    trainer_day_company[trainer, day, company]
-                    for company in companies
-                ) <= 1
-            )
+                        # For each day, link via reification
+                        for day in range(DAYS):
+
+                            # If trainer assigned AND venue chosen
+                            # AND session is on this day
+                            # → activate trainer_day_company
+                            model.Add(
+                                day_session[course, session] == day
+                            ).OnlyEnforceIf([
+                                trainer_session[course, session, trainer],
+                                venue_session[course, session, venue.name],
+                                trainer_day_company[trainer, day, company]
+                            ])
+
+            # Enforce max 1 company per day
+            for day in range(DAYS):
+                model.Add(
+                    sum(
+                        trainer_day_company[trainer, day, company]
+                        for company in companies
+                    ) <= 1
+                )
 
 
     # ===============================
