@@ -237,6 +237,6 @@ def run_solver(params: ModelParams):
         batch = pd.concat(dfs_batch.values(), ignore_index=True)
         batch.to_csv(f"export/{params.report_name}_batch.csv", index=False)
 
-        print("Batch report has been exported.")
+        print(f"Batch report has been exported to export/{params.report_name}_batch.csv")
     else:
         print("No solution found")
