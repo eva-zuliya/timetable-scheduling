@@ -615,9 +615,11 @@ def run_solver(params: ModelParams):
 
     if status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
         rows = []
+        detailed_rows = []
+
         for group in G:
-            # for subgroup, trainees in G[group]["subgroups"].items():
             trainees = len(G[group].trainees)
+
             for course in G[group].courses:
                 course_company = C[course].company
                 course_stream = C[course].stream
@@ -644,7 +646,9 @@ def run_solver(params: ModelParams):
 
                 # calendar mapping
                 date_str = CALENDAR.dates[start_day].date
-                day_name = datetime.datetime.strptime(str(date_str), "%Y-%m-%d").strftime("%A")
+                day_name = datetime.datetime.strptime(
+                    str(date_str), "%Y-%m-%d"
+                ).strftime("%A")
 
                 start_time = hour_index_to_time(start_hour, is_start=True)
                 end_time = hour_index_to_time(end_hour, is_start=False)
@@ -666,10 +670,13 @@ def run_solver(params: ModelParams):
 
                 # occupancy of session
                 occupancy = sum(
-                    trainees for g in G
-                        if course in G[g].courses and solver.Value(assign[g, course, chosen_session])
+                    len(G[g].trainees)
+                    for g in G
+                    if course in G[g].courses
+                    and solver.Value(assign[g, course, chosen_session])
                 )
 
+                # -------- GROUP LEVEL ROW --------
                 rows.append([
                     group,
                     trainees,
@@ -685,12 +692,32 @@ def run_solver(params: ModelParams):
                     start_time,
                     end_time,
                     venue_used,
-                    V[venue_used].capacity,
+                    V[venue_used].capacity if venue_used else None,
                     occupancy,
                     trainer_used,
-                    '-'
+                    chosen_session
                 ])
 
+                # -------- TRAINEE LEVEL ROWS --------
+                for trainee_id in G[group].trainees:
+                    detailed_rows.append([
+                        trainee_id,
+                        group,
+                        course,
+                        course_company,
+                        course_stream,
+                        date_str,
+                        day_name,
+                        start_time,
+                        end_time,
+                        venue_used,
+                        trainer_used,
+                        chosen_session
+                    ])
+
+        # =========================
+        # GROUP LEVEL DF
+        # =========================
         df = pd.DataFrame(rows, columns=[
             "Group",
             "Trainees",
@@ -712,136 +739,137 @@ def run_solver(params: ModelParams):
             "Session"
         ])
 
-        print("\nSCHEDULE:")
+        print("\nSCHEDULE (GROUP LEVEL):")
         print(df)
+
         df.to_csv(f"export/{params.report_name}_schedule.csv", index=False)
 
-        # # Merge only the 'trainee' column from groups_trainee_df into df
-        # df = df.merge(
-        #     groups_trainee[['group_name', 'subgroup_name', 'trainee']],
-        #     left_on=["Group", "Subgroup"],
-        #     right_on=["group_name", "subgroup_name"],
-        #     how='left'
-        # )
-        
-        # # Remove specified columns
-        # columns_to_drop = ["Trainees", "Venue Occupancy", "group_name", "subgroup_name"]
-        # df = df.drop(columns=[col for col in columns_to_drop if col in df.columns])
+        # =========================
+        # TRAINEE LEVEL DF
+        # =========================
+        df_detailed = pd.DataFrame(detailed_rows, columns=[
+            "Trainee ID",
+            "Group",
+            "Course",
+            "Company",
+            "Stream",
+            "Date",
+            "Day",
+            "Start Time",
+            "End Time",
+            "Venue",
+            "Trainer",
+            "Session"
+        ])
 
-        # # Rename 'trainee' column to 'Trainee'
-        # if 'trainee' in df.columns:
-        #     df = df.rename(columns={'trainee': 'Trainee'})
+        print("\nSCHEDULE (TRAINEE LEVEL):")
+        print(df_detailed)
 
-        # print("\nSCHEDULE DETAIL:")
-        # print(df)
+        df_detailed.to_csv(
+            f"export/{params.report_name}_trainee_schedule.csv",
+            index=False
+        )
 
-        # df.to_csv(f"export/{params['report_name']}_schedule_detail.csv", index=False)
+        print("\nResult has been exported.")
 
-        # print("\nResult has been exported.")
-
-        # from collections import defaultdict
-
-        # def get_interval(course, session):
-        #     start = solver.Value(start_session[course, session])
-        #     end = solver.Value(end_session[course, session])
-        #     return start, end
-
-
-        # def overlap(a_start, a_end, b_start, b_end):
-        #     return not (a_end <= b_start or b_end <= a_start)
-
-
-        # # ===============================
-        # # TRAINER OVERLAP CHECK
-        # # ===============================
-        # trainer_intervals = defaultdict(list)
-
-        # for c in C:
-        #     if c in S:
-        #         for s in S[c]:
-        #             for t in T:
-        #                 key = (c, s, t)
-        #                 if key in trainer_session and solver.Value(trainer_session[key]):
-        #                     trainer_intervals[t].append((c, s, *get_interval(c, s)))
-
-        # for t, sessions in trainer_intervals.items():
-        #     for i in range(len(sessions)):
-        #         for j in range(i + 1, len(sessions)):
-        #             _, _, s1, e1 = sessions[i]
-        #             _, _, s2, e2 = sessions[j]
-        #             if overlap(s1, e1, s2, e2):
-        #                 print("TRAINER OVERLAP:", t, sessions[i], sessions[j])
+        from collections import defaultdict
+        def get_interval(course, session):
+            start = solver.Value(start_session[course, session])
+            end = solver.Value(end_session[course, session])
+            return start, end
 
 
-        # # ===============================
-        # # VENUE OVERLAP CHECK
-        # # ===============================
-        # venue_intervals = defaultdict(list)
-
-        # for c in C:
-        #     if c in S:
-        #         for s in S[c]:
-        #             for v in V:
-        #                 if solver.Value(venue_session[c, s, v]):
-        #                     venue_intervals[v].append((c, s, *get_interval(c, s)))
-
-        # for v, sessions in venue_intervals.items():
-        #     for i in range(len(sessions)):
-        #         for j in range(i + 1, len(sessions)):
-        #             _, _, s1, e1 = sessions[i]
-        #             _, _, s2, e2 = sessions[j]
-        #             if overlap(s1, e1, s2, e2):
-        #                 print("VENUE OVERLAP:", v, sessions[i], sessions[j])
+        def overlap(a_start, a_end, b_start, b_end):
+            return not (a_end <= b_start or b_end <= a_start)
 
 
-        # # ===============================
-        # # SUBGROUP OVERLAP CHECK
-        # # ===============================
-        # subgroup_intervals = defaultdict(list)
+        # ===============================
+        # TRAINER OVERLAP CHECK
+        # ===============================
+        trainer_intervals = defaultdict(list)
 
-        # for g in G:
-        #     for u in G[g]["subgroups"]:
-        #         for c in G[g]["courses"]:
-        #             for s in S[c]:
-        #                 if solver.Value(assign[g, u, c, s]):
-        #                     subgroup_intervals[(g, u)].append(
-        #                         (c, s, *get_interval(c, s))
-        #                     )
+        for c in C:
+            if c in S:
+                for s in S[c]:
+                    for t in T:
+                        key = (c, s, t)
+                        if key in trainer_session and solver.Value(trainer_session[key]):
+                            trainer_intervals[t].append((c, s, *get_interval(c, s)))
 
-        # for gu, sessions in subgroup_intervals.items():
-        #     for i in range(len(sessions)):
-        #         for j in range(i + 1, len(sessions)):
-        #             _, _, s1, e1 = sessions[i]
-        #             _, _, s2, e2 = sessions[j]
-        #             if overlap(s1, e1, s2, e2):
-        #                 print("SUBGROUP OVERLAP:", gu, sessions[i], sessions[j])
-
-
-        # # ===============================
-        # # VENUE CAPACITY CHECK
-        # # ===============================
-        # for c in C:
-        #     if c in S:
-        #         for s in S[c]:
-        #             # compute occupancy
-        #             occupancy = sum(
-        #                 G[g]["subgroups"][u]
-        #                 for g in G
-        #                 for u in G[g]["subgroups"]
-        #                 if c in G[g]["courses"]
-        #                 and solver.Value(assign[g, u, c, s])
-        #             )
-
-        #             for v in V:
-        #                 if solver.Value(venue_session[c, s, v]):
-        #                     if occupancy > venues[v]:
-        #                         print(
-        #                             "CAPACITY BREACH:",
-        #                             c, s,
-        #                             "venue", v,
-        #                             "occupancy", occupancy,
-        #                             "capacity", venues[v]
-        #                         )
+        for t, sessions in trainer_intervals.items():
+            for i in range(len(sessions)):
+                for j in range(i + 1, len(sessions)):
+                    _, _, s1, e1 = sessions[i]
+                    _, _, s2, e2 = sessions[j]
+                    if overlap(s1, e1, s2, e2):
+                        print("🚨 TRAINER OVERLAP:", t, sessions[i], sessions[j])
 
 
-    
+        # ===============================
+        # VENUE OVERLAP CHECK
+        # ===============================
+        venue_intervals = defaultdict(list)
+
+        for c in C:
+            if c in S:
+                for s in S[c]:
+                    for v in V:
+                        if solver.Value(venue_session[c, s, v]):
+                            venue_intervals[v].append((c, s, *get_interval(c, s)))
+
+        for v, sessions in venue_intervals.items():
+            for i in range(len(sessions)):
+                for j in range(i + 1, len(sessions)):
+                    _, _, s1, e1 = sessions[i]
+                    _, _, s2, e2 = sessions[j]
+                    if overlap(s1, e1, s2, e2):
+                        print("🚨 VENUE OVERLAP:", v, sessions[i], sessions[j])
+
+
+        # ===============================
+        # GROUP OVERLAP CHECK
+        # ===============================
+        group_intervals = defaultdict(list)
+
+        for g in G:
+            for c in G[g].courses:
+                if c in S:
+                    for s in S[c]:
+                        if solver.Value(assign[g, c, s]):
+                            group_intervals[g].append((c, s, *get_interval(c, s)))
+
+        for g, sessions in group_intervals.items():
+            for i in range(len(sessions)):
+                for j in range(i + 1, len(sessions)):
+                    _, _, s1, e1 = sessions[i]
+                    _, _, s2, e2 = sessions[j]
+                    if overlap(s1, e1, s2, e2):
+                        print("🚨 GROUP OVERLAP:", g, sessions[i], sessions[j])
+
+
+        # ===============================
+        # VENUE CAPACITY CHECK
+        # ===============================
+        for c in C:
+            if c in S:
+                for s in S[c]:
+
+                    # compute total occupancy for this session
+                    occupancy = sum(
+                        len(G[g].trainees)
+                        for g in G
+                        if c in G[g].courses
+                        and solver.Value(assign[g, c, s])
+                    )
+
+                    # check assigned venue
+                    for v in V:
+                        if solver.Value(venue_session[c, s, v]):
+                            if occupancy > V[v].capacity:
+                                print(
+                                    "🚨 CAPACITY BREACH:",
+                                    c, s,
+                                    "venue", v,
+                                    "occupancy", occupancy,
+                                    "capacity", V[v].capacity
+                                )
