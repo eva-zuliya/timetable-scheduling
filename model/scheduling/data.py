@@ -16,14 +16,21 @@ def read_data(params: ModelParams) -> ModelInput:
     course_batches, course_batches_mapping = read_courses(params, calendar)
 
     trainers = read_trainers(params, course_batches_mapping)
+    unique_trained_courses_list = list(
+        dict.fromkeys(
+            course
+            for trainer in trainers.values()
+            for course in trainer.eligible
+        )
+    )
 
-    print_trainers = {trainer.name: trainer.model_dump() for trainer in trainers.values()}
-    print("\n", highlight(json.dumps(print_trainers, indent=4), lexers.JsonLexer(), formatters.TerminalFormatter()), "\n")
+    # print_trainers = {trainer.name: trainer.model_dump() for trainer in trainers.values()}
+    # print("\n", highlight(json.dumps(print_trainers, indent=4), lexers.JsonLexer(), formatters.TerminalFormatter()), "\n")
 
     groups = read_trainees(params, course_batches_mapping)
     course_list = set(course_batches.keys())
     for key, group in groups.items():
-        groups[key].courses = [x for x in group.courses if x in course_list]
+        groups[key].courses = [x for x in group.courses if x in course_list and x in unique_trained_courses_list]
 
     print_group = {group.name: group.model_dump() for group in groups.values()}
     for key in list(print_group.keys()):
@@ -31,9 +38,11 @@ def read_data(params: ModelParams) -> ModelInput:
 
     print("\n", highlight(json.dumps(print_group, indent=4), lexers.JsonLexer(), formatters.TerminalFormatter()), "\n")
 
+    venue = read_venue(params)
+
     return ModelInput(
         calendar=calendar,
-        venues=read_venue(params),
+        venues=venue,
         trainers=trainers,
         courses=course_batches,
         groups=groups
@@ -137,6 +146,7 @@ def read_courses(params: ModelParams, calendar: Calendar):
             dfs.append(pd.read_csv(file))
 
         _df_batch = pd.concat(dfs, ignore_index=True)
+        _df_batch['course_name'] = _df_batch['course_name'].str.strip()
 
         for (company, course, batch), group in _df_batch.groupby(
             ["company", "course_name", "batch_no"]
@@ -274,6 +284,9 @@ def read_trainees(params: ModelParams, course_batches_mapping: dict[str, list[st
             dfs.append(pd.read_csv(file))
 
         _df_batch = pd.concat(dfs, ignore_index=True)
+        _df_batch['course_name'] = _df_batch['course_name'].astype(str).str.strip()
+        _df_batch['trainee_id'] = _df_batch['trainee_id'].astype(str).str.strip()
+        
         batch_lookup = _df_batch.set_index(["company", "course_name", "trainee_id"])["batch_no"]
 
 
