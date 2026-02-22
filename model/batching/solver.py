@@ -208,7 +208,8 @@ def run_solver(params: ModelParams):
             if not df.empty:
                 pivot = df.groupby('course_name').agg(
                     unique_batch_count=('batch_no', 'nunique'),
-                    trainee_count=('trainee_id', 'nunique')
+                    trainee_count=('trainee_id', 'nunique'),
+                    feasible_weeks_example=('feasible_weeks', lambda x: str(next(iter(x), '')))
                 ).reset_index()
                 print("\nPivot table (course_name, count of unique batch, count of trainees):\n", pivot)
             
