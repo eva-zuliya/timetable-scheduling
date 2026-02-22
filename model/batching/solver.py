@@ -176,8 +176,7 @@ def run_solver(params: ModelParams):
             rows = []
             for course in C:
                 max_batches = C[course].max_batches
-
-                batch_counter = 1  # <- this makes it 1,2,3,...
+                batch_counter = 1
 
                 for b in range(max_batches):
                     if solver.Value(batch_used[(course, b)]):
@@ -187,11 +186,21 @@ def run_solver(params: ModelParams):
                             if solver.Value(x[(course, i, b)])
                         ]
 
-                        feasible_weeks = [
-                            w + 1
-                            for w in WEEKS
-                            if solver.Value(feasible[(course, b, w)])
-                        ]
+                        # Determine overlapped shift per week
+                        week_shifts = {}
+
+                        for w in WEEKS:
+
+                            # Default = unavailable
+                            shift_value = SHIFT3
+
+                            if solver.Value(feasible[(course, b, w)]):
+                                for s in SHIFTS:
+                                    if solver.Value(z[(course, b, w, s)]):
+                                        shift_value = s
+                                        break
+
+                            week_shifts[w] = shift_value
 
                         for trainee in members:
                             rows.append({
@@ -199,19 +208,23 @@ def run_solver(params: ModelParams):
                                 "course_name": course,
                                 "batch_no": batch_counter,
                                 "trainee_id": trainee,
-                                "feasible_weeks": feasible_weeks
+                                "week1": week_shifts[0],
+                                "week2": week_shifts[1],
+                                "week3": week_shifts[2],
+                                "week4": week_shifts[3],
                             })
 
-                        batch_counter += 1  # increment only if batch used
+                        batch_counter += 1
 
             df = pd.DataFrame(rows)
             if not df.empty:
-                pivot = df.groupby('course_name').agg(
-                    unique_batch_count=('batch_no', 'nunique'),
-                    trainee_count=('trainee_id', 'nunique'),
-                    feasible_weeks_example=('feasible_weeks', lambda x: str(next(iter(x), '')))
-                ).reset_index()
-                print("\nPivot table (course_name, count of unique batch, count of trainees):\n", pivot)
+                # Get all columns except "trainee_id"
+                group_cols = [col for col in df.columns if col != "trainee_id"]
+                # For each unique combination in the grouping columns, count the number of trainees
+                pivot = (df
+                         .groupby(group_cols, as_index=False)
+                         .agg(trainee_count=('trainee_id', 'count')))
+                print("\nPivot table (with all columns except 'trainee_id', + count of trainees):\n", pivot)
             
             # print(df)
             dfs_batch[company] = df.copy()
