@@ -4,13 +4,17 @@ import json
 from pygments import highlight, lexers, formatters
 from pydantic import BaseModel
 from typing import Optional
+
 from .schema import *
 from schema import ModelParams
 from .utils import *
 
 
 def read_data(params: ModelParams) -> ModelInput:
-    groups = read_trainees(params)
+    course_batches, course_batches_mapping = read_courses(params)
+
+    trainers = read_trainers(params, course_batches_mapping)
+    groups = read_trainees(params, course_batches_mapping)
 
     print_group = {group.name: group.model_dump() for group in groups.values()}
     print("\n", highlight(json.dumps(print_group, indent=4), lexers.JsonLexer(), formatters.TerminalFormatter()), "\n")
@@ -18,8 +22,8 @@ def read_data(params: ModelParams) -> ModelInput:
     return ModelInput(
         calendar=read_calendar(params),
         venues=read_venue(params),
-        trainers=read_trainers(params),
-        courses=read_courses(params),
+        trainers=trainers,
+        courses=course_batches,
         groups=groups
     )
 
@@ -45,36 +49,6 @@ def read_venue(params: ModelParams):
     print("Len Venues:", len(venues))
     
     return venues
-
-
-def read_trainers(params: ModelParams):
-    _df_trainer = pd.read_csv(params.file_master_trainer)
-    _df_trainer = _df_trainer.drop_duplicates(subset=["trainer_id"])
-    _df_trainer['trainer_id'] = _df_trainer['trainer_id'].astype(str)
-    _df_trainer = _df_trainer[_df_trainer['trainer_id'] != '']
-    
-    _df_eligible = pd.read_csv(params.file_master_course_trainer)
-    _df_eligible['trainer_id'] = _df_eligible['trainer_id'].astype(str)
-
-    trainers = {}
-    for _, trainer_row in _df_trainer.iterrows():
-        try:
-            trainer_id = trainer_row['trainer_id']
-            eligible_courses = _df_eligible[_df_eligible['trainer_id'] == trainer_id]['course_name'].drop_duplicates().tolist()
-
-            if eligible_courses:
-                trainers[trainer_id] = Trainer(
-                    name=trainer_id,
-                    eligible=eligible_courses
-                )
-
-        except Exception as e:
-            # print(f"Error processing trainer row: {trainer_row}, error: {e}")
-            continue
-
-    print("Len Trainers:", len(trainers))
-
-    return trainers
 
 
 def read_courses(params: ModelParams):
@@ -130,11 +104,101 @@ def read_courses(params: ModelParams):
         except Exception as e:
             # print(f"Error processing course row: {course_row}, error: {e}")
             continue
+    
+    batches_mapping = {}
+    default_batch = {"batch_no": 1, "week1": 0, "week2": 0, "week3": 0, "week4": 0}
 
-    return courses
+    if params.file_master_course_batch is None:
+        for course in courses.values():
+            batches_mapping[course.company, course.name] = [default_batch]
+    
+    else:
+        dfs = []
+        for file in params.file_master_course_batch:
+            dfs.append(pd.read_csv(file))
+
+        _df_batch = pd.concat(dfs, ignore_index=True)
+
+        for (company, course, batch), group in _df_batch.groupby(
+            ["company", "course_name", "batch_no"]
+        ):
+            row = group.iloc[0]
+            key = (company, course)
+            batch_dict = {
+                "batch_no": batch,
+                "week1": row["week1"],
+                "week2": row["week2"],
+                "week3": row["week3"],
+                "week4": row["week4"],
+            }
+
+            batches_mapping.setdefault(key, []).append(batch_dict)
 
 
-def read_trainees(params: ModelParams):
+    course_batches: dict[str, CourseBatch] = {}
+    course_batches_mapping: dict[str, list[str]] = {}
+    for course in courses.values():
+        batches = batches_mapping.get((course.company, course.name), [default_batch])
+
+        for batch_info in batches:
+            batch = CourseBatch(
+                **course.model_dump(),
+                batch_number=batch_info["batch_no"],
+                valid_start_domain=None
+            )
+
+            course_batches[batch.id] = batch
+            course_batches_mapping[course.name] = [batch.id]
+
+    # Updating prerequsites and global sequence with batch id
+    for batch_id, batch in course_batches.items():
+        prerequisites = batch.prerequisites
+        if prerequisites is not None:
+            batch_prerequisites = [item for k in prerequisites for item in course_batches_mapping[k]]
+            course_batches[batch_id].prerequisites = batch_prerequisites
+
+        sequence = batch.global_sequence
+        if sequence is not None:
+            batch_sequence = [item for k in sequence for item in course_batches_mapping[k]]
+            course_batches[batch_id].global_sequence = batch_sequence
+
+    print("Len Course Batches:", len(course_batches))
+
+    return course_batches, course_batches_mapping
+
+
+def read_trainers(params: ModelParams, course_batches_mapping: dict[str, list[str]]):
+    _df_trainer = pd.read_csv(params.file_master_trainer)
+    _df_trainer = _df_trainer.drop_duplicates(subset=["trainer_id"])
+    _df_trainer['trainer_id'] = _df_trainer['trainer_id'].astype(str)
+    _df_trainer = _df_trainer[_df_trainer['trainer_id'] != '']
+    
+    _df_eligible = pd.read_csv(params.file_master_course_trainer)
+    _df_eligible['trainer_id'] = _df_eligible['trainer_id'].astype(str)
+
+    trainers = {}
+    for _, trainer_row in _df_trainer.iterrows():
+        try:
+            trainer_id = trainer_row['trainer_id']
+            eligible_courses = _df_eligible[_df_eligible['trainer_id'] == trainer_id]['course_name'].drop_duplicates().tolist()
+            eligible_course_batches = [item for k in eligible_courses for item in course_batches_mapping[k]]
+
+            if eligible_courses:
+                trainers[trainer_id] = Trainer(
+                    name=trainer_id,
+                    eligible=eligible_course_batches
+                )
+
+        except Exception as e:
+            # print(f"Error processing trainer row: {trainer_row}, error: {e}")
+            continue
+
+    print("Len Trainers:", len(trainers))
+
+    return trainers
+
+
+def read_trainees(params: ModelParams, course_batches_mapping: dict[str, list[str]]):
     _df_trainee = pd.read_csv(params.file_master_trainee)
     _df_trainee['employee_id'] = _df_trainee['employee_id'].astype(str)
     _df_trainee = _df_trainee.drop_duplicates(subset=["employee_id"])
@@ -186,12 +250,14 @@ def read_trainees(params: ModelParams):
             enrolled_courses = _df_enrollment[_df_enrollment['employee_id'] == trainee_name]['course_name'].drop_duplicates().tolist()
 
             if enrolled_courses:  # Only include trainees with at least one course
+                enrolled_courses_batches = [item for k in enrolled_courses for item in course_batches_mapping[k]]
+
                 _trainees.append(
                     Trainee(
                         company=trainee_company,
                         name=trainee_name,
                         shift=trainee_shift,
-                        courses=enrolled_courses,
+                        courses=enrolled_courses_batches,
                         cycle=trainee_cycle
                     )
                 )

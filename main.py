@@ -16,9 +16,11 @@ if __name__ == "__main__":
         params = json.load(f)
         params = ModelParams(**params)
 
-    # if params.is_splitting_batch:
-    #     params.file_master_course_batch = f"{params.report_name}_batch"
+    if params.is_splitting_batch:
+        params.file_master_course_batch = [f"export/{params.report_name}_batch"]
+        batching_solver(params)
 
-    # scheduling_solver(params)
+    if params.is_scheduling_course:
+        scheduling_solver(params)
 
-    batching_solver(params)
+    

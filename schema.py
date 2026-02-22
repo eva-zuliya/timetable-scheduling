@@ -14,7 +14,7 @@ class ModelParams(BaseModel):
     file_master_course_trainer: str
     file_master_course_sequence: str
     file_master_course_trainee: str
-    file_master_course_batch: Optional[str] = None
+    file_master_course_batch: Optional[list[str]] = None
 
     minimum_course_participant: int = 0
     maximum_group_size: int = 2000
@@ -28,10 +28,12 @@ class ModelParams(BaseModel):
 
     is_using_global_sequence: bool = True
     is_considering_shift: bool = False
-    is_splitting_batch: bool = False
 
     course_stream: Optional[list[str]] = None
     companies: Optional[list[str]] = None
 
     max_time_in_seconds: int = 100
     num_search_workers: int = 8
+
+    is_splitting_batch: bool = False
+    is_scheduling_course: bool = True

@@ -14,17 +14,6 @@ class Trainer(BaseModel):
     eligible: list[str]
 
 
-class CourseBatch(BaseModel):
-    batch_number: int
-    valid_start_domain: list[int]
-    course_name: str
-    company: str
-
-    @property
-    def id(self):
-        return f"[{self.company}]-[{self.course_name}]-[{self.batch_number}]"
-
-
 class Course(BaseModel):
     company: str
     name: str
@@ -34,7 +23,15 @@ class Course(BaseModel):
     global_sequence: list[str]
     valid_start_date: Optional[str] = None
     valid_end_date: Optional[str] = None
-    batches: Optional[list[CourseBatch]] = None
+
+
+class CourseBatch(Course):
+    batch_number: int
+    valid_start_domain: Optional[list[int]] = None
+
+    @property
+    def id(self):
+        return f"[{self.company}]-[{self.name}]-[{self.batch_number}]"
 
 
 class Trainee(BaseModel):
@@ -119,5 +116,5 @@ class ModelInput(BaseModel):
     calendar: Calendar
     venues: dict[str, Venue]
     trainers: dict[str, Trainer]
-    courses: dict[str, Course]
+    courses: dict[str, CourseBatch]
     groups: dict[str, Group]
