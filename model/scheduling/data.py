@@ -1,19 +1,18 @@
-from typing_extensions import ParamSpec
 import pandas as pd
 import math
 import json
 from pygments import highlight, lexers, formatters
 from pydantic import BaseModel
 from typing import Optional
-from schema import *
-from utils import *
+from .schema import *
+from .utils import *
 
 
 def read_data(params: ModelParams) -> ModelInput:
     groups = read_trainees(params)
 
-    # print_group = {group.name: group.model_dump() for group in groups.values()}
-    # print("\n", highlight(json.dumps(print_group, indent=4), lexers.JsonLexer(), formatters.TerminalFormatter()), "\n")
+    print_group = {group.name: group.model_dump() for group in groups.values()}
+    print("\n", highlight(json.dumps(print_group, indent=4), lexers.JsonLexer(), formatters.TerminalFormatter()), "\n")
 
     return ModelInput(
         calendar=read_calendar(params),

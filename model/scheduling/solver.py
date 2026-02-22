@@ -1,9 +1,9 @@
 import pandas as pd
 from ortools.sat.python import cp_model
-from schema import *
-from utils import hour_index_to_time
+from .schema import *
+from .utils import hour_index_to_time
 import datetime
-from data import read_data
+from .data import read_data
 
 
 def run_solver(params: ModelParams):

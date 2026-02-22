@@ -1,4 +1,4 @@
-from schema import Group
+from .schema import Group
 import pandas as pd
 
 
