@@ -17,7 +17,7 @@ if __name__ == "__main__":
         params = ModelParams(**params)
 
     if params.is_splitting_batch:
-        params.file_master_course_batch = [f"export/{params.report_name}_batch"]
+        params.file_master_course_batch = [f"export/{params.report_name}_batch.csv"]
         batching_solver(params)
 
     if params.is_scheduling_course:

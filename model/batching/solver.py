@@ -131,12 +131,12 @@ def run_solver(params: ModelParams):
                 for w in WEEKS:
                     model.Add(M[course] >= (w+1) * run[(course,b,w)])
 
-            # Trainer concurrency
-            for w in WEEKS:
-                model.Add(
-                    sum(run[(course,b,w)] for b in range(max_batches))
-                    <= trainers
-                )
+            # # Trainer concurrency
+            # for w in WEEKS:
+            #     model.Add(
+            #         sum(run[(course,b,w)] for b in range(max_batches))
+            #         <= trainers
+            #     )
 
             model.Add(T >= M[course])
 
