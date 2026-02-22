@@ -84,6 +84,9 @@ def read_courses(params: ModelParams, calendar: Calendar):
     _df_course['duration_minutes'] = pd.to_numeric(
         _df_course['duration_minutes'], errors='coerce').fillna(params.default_course_duration*60)
 
+    # If duration_minutes < 0, replace with default_course_duration*60 as well
+    _df_course.loc[_df_course['duration_minutes'] < 0, 'duration_minutes'] = params.default_course_duration * 60
+
     _df_prereq = pd.read_csv(params.file_master_course_sequence)
     _df_prereq = _df_prereq[
         _df_prereq['prerequisite_course_name'].notna() &
