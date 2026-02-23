@@ -326,9 +326,11 @@ def run_solver(params: ModelParams):
     # ===============================
     for course in C:
         if course in S:
+            course_company = C[course].company
+
             for session in S[course]:
                 for venue in V:
-                    if C[course].company != V[venue].company:
+                    if course_company not in V[venue].company:
                         model.Add(venue_session[course, session, venue] == 0)
                     
     for venue in V:
@@ -422,7 +424,7 @@ def run_solver(params: ModelParams):
     # ===============================
     if params.companies is not None and len(params.companies)>1:
 
-        companies = list(set(v.company for v in V.values()))
+        companies = list(set(company for v in V.values() for company in v.company))
         trainer_day_company = {}
 
         for trainer in T:
@@ -444,21 +446,21 @@ def run_solver(params: ModelParams):
 
                     for venue in V.values():
 
-                        company = venue.company
+                        companies = venue.company
+                        for company in companies:
+                            # For each day, link via reification
+                            for day in range(DAYS):
 
-                        # For each day, link via reification
-                        for day in range(DAYS):
-
-                            # If trainer assigned AND venue chosen
-                            # AND session is on this day
-                            # → activate trainer_day_company
-                            model.Add(
-                                day_session[course, session] == day
-                            ).OnlyEnforceIf([
-                                trainer_session[course, session, trainer],
-                                venue_session[course, session, venue.name],
-                                trainer_day_company[trainer, day, company]
-                            ])
+                                # If trainer assigned AND venue chosen
+                                # AND session is on this day
+                                # → activate trainer_day_company
+                                model.Add(
+                                    day_session[course, session] == day
+                                ).OnlyEnforceIf([
+                                    trainer_session[course, session, trainer],
+                                    venue_session[course, session, venue.name],
+                                    trainer_day_company[trainer, day, company]
+                                ])
 
             # Enforce max 1 company per day
             for day in range(DAYS):

@@ -60,12 +60,16 @@ def read_venue(params: ModelParams):
         name, capacity, company = row['venue_name'], row['capacity'], row['company']
         is_virtual = row['is_virtual'] if 'is_virtual' in row else False
 
-        venues[name] = Venue(
-            company=company,
-            name=name,
-            capacity=capacity+params.buffer_capacity,
-            is_virtual=is_virtual
-        )
+        if name not in venues:
+            venues[name] = Venue(
+                company=[company],
+                name=name,
+                capacity=capacity+params.buffer_capacity,
+                is_virtual=is_virtual
+            )
+        
+        else:
+            venues[name].company.append(company)
 
     print("Len Venues:", len(venues))
     
