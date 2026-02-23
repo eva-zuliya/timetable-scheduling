@@ -231,11 +231,18 @@ def run_solver(params: ModelParams):
         # SOLVE
         # -------------------------
 
+        print("Solving starts at:", pd.Timestamp.now())
+
         solver = cp_model.CpSolver()
         solver.parameters.max_time_in_seconds = params.max_time_in_seconds
         solver.parameters.num_search_workers = params.num_search_workers
 
         status = solver.Solve(model)
+
+        print("Solving ends at:", pd.Timestamp.now())
+
+        print("Status:", solver.StatusName(status))
+        print(f"Objective value: {solver.ObjectiveValue()}")
 
         # -------------------------
         # OUTPUT
