@@ -104,18 +104,37 @@ def read_trainees(params: ModelParams, company: str):
 
         _course_list = _df_course['course_name'].drop_duplicates().tolist()
         _df_enrollment = _df_enrollment[_df_enrollment["course_name"].isin(_course_list)]
+    
+    mapping = {
+        "Shift 1": 1,
+        "Shift 2": 2,
+        "Shift 3": 3
+    }
+
+    cols = ["shift_w1", "shift_w2", "shift_w3", "shift_w4"]
+    _df_trainee[cols] = _df_trainee[cols].replace(mapping).fillna(0).astype(int)
 
     shifts = {}
     for _, trainee_row in _df_trainee.iterrows():
         try:
             trainee_name = trainee_row['employee_id']
+
+            shift_w1 = trainee_row['shift_w1']
+            shift_w2 = trainee_row['shift_w2']
+            shift_w3 = trainee_row['shift_w3']
+            shift_w4 = trainee_row['shift_w4']
             
             # Get courses for this trainee from enrollment dataframe
             enrolled_courses = _df_enrollment[_df_enrollment['employee_id'] == trainee_name]['course_name'].drop_duplicates().tolist()
 
             if enrolled_courses:  # Only include trainees with at least one course
-                shifts[trainee_name] = TraineeShift(name=trainee_name)
-                # later update based on data
+                shifts[trainee_name] = TraineeShift(
+                    name=trainee_name,
+                    week1=shift_w1,
+                    week2=shift_w2,
+                    week3=shift_w3,
+                    week4=shift_w4
+                )
   
         except Exception as e:
             # print(f"Error processing trainee row: {trainee_row}, error: {e}")
