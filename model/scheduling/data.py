@@ -27,7 +27,7 @@ def read_data(params: ModelParams) -> ModelInput:
     # print_trainers = {trainer.name: trainer.model_dump() for trainer in trainers.values()}
     # print("\n", highlight(json.dumps(print_trainers, indent=4), lexers.JsonLexer(), formatters.TerminalFormatter()), "\n")
 
-    groups = read_trainees(params, course_batches_mapping)
+    groups = read_trainees(params)
     course_list = set(course_batches.keys())
     for key, group in groups.items():
         groups[key].courses = [x for x in group.courses if x in course_list and x in unique_trained_courses_list]
@@ -167,7 +167,7 @@ def read_courses(params: ModelParams, calendar: Calendar):
             batches_mapping.setdefault(key, []).append(batch_dict)
 
 
-    week_groups = Calendar.week_groups
+    week_groups = calendar.week_groups
 
     course_batches: dict[str, CourseBatch] = {}
     course_batches_mapping: dict[tuple[str, str], list[str]] = {}
@@ -295,7 +295,7 @@ def read_trainees(params: ModelParams):
 
     _df_enrollment['employee_id'] = _df_enrollment['employee_id'].astype(str)
     _df_enrollment['course_name'] = _df_enrollment['course_name'].str.strip()
-    _df_enrollment = _df_enrollment[_df_enrollment['course_exist'] == 'TRUE']
+    _df_enrollment = _df_enrollment[_df_enrollment['course_exist'] == True]
 
     if params.course_stream is not None:
         _df_course = pd.read_csv(params.file_master_course)

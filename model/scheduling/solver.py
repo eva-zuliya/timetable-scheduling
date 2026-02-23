@@ -65,7 +65,7 @@ def run_solver(params: ModelParams):
                 active_session[course, session] = model.NewBoolVar(f"active_{course}_{session}")
 
                 if start_session_valid_domain is not None:
-                    start = model.NewIntVarFromDomain(
+                    start_session[course, session] = model.NewIntVarFromDomain(
                         cp_model.Domain.FromValues(start_session_valid_domain),
                         f"start_{course}_{session}"
                     )
