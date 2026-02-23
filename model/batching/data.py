@@ -112,7 +112,9 @@ def read_trainees(params: ModelParams, company: str):
     }
 
     cols = ["shift_w1", "shift_w2", "shift_w3", "shift_w4"]
-    _df_trainee[cols] = _df_trainee[cols].replace(mapping).fillna(0).astype(int)
+    _df_trainee[cols] = _df_trainee[cols].apply(
+        lambda s: s.astype(str).map(mapping).fillna(0).astype(int)
+    )
 
     shifts = {}
     for _, trainee_row in _df_trainee.iterrows():
