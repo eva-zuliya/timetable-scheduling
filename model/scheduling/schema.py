@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 
 
 class Venue(BaseModel):
-    company: str
+    company: list[str]
     name: str
     capacity: int
     is_virtual: bool = False

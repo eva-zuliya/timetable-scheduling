@@ -65,7 +65,7 @@ def run_solver(params: ModelParams):
                 active_session[course, session] = model.NewBoolVar(f"active_{course}_{session}")
 
                 if start_session_valid_domain is not None:
-                    start = model.NewIntVarFromDomain(
+                    start_session[course, session] = model.NewIntVarFromDomain(
                         cp_model.Domain.FromValues(start_session_valid_domain),
                         f"start_{course}_{session}"
                     )
@@ -324,25 +324,33 @@ def run_solver(params: ModelParams):
     # ===============================
     # VENUE NO-OVERLAP
     # ===============================
+    for course in C:
+        if course in S:
+            course_company = C[course].company
+
+            for session in S[course]:
+                for venue in V:
+                    if course_company not in V[venue].company:
+                        model.Add(venue_session[course, session, venue] == 0)
+                    
     for venue in V:
-        company = V[venue].company
         interval_session = []
 
         for course in C:
-            if C[course].company == company:
-                if course in S:
-                    dur = C[course].duration
+            if course in S:
+                dur = C[course].duration
 
-                    for session in S[course]:
-                        interval = model.NewOptionalIntervalVar(
-                            start_session[course, session],
-                            dur,
-                            end_session[course, session],
-                            venue_session[course, session, venue],
-                            f"interval_venue_{course}_{session}_{venue}"
-                        )
+                for session in S[course]:
 
-                        interval_session.append(interval)
+                    interval = model.NewOptionalIntervalVar(
+                        start_session[course, session],
+                        dur,
+                        end_session[course, session],
+                        venue_session[course, session, venue],
+                        f"interval_venue_{course}_{session}_{venue}"
+                    )
+
+                    interval_session.append(interval)
 
         if interval_session:
             model.AddNoOverlap(interval_session)
@@ -416,12 +424,12 @@ def run_solver(params: ModelParams):
     # ===============================
     if params.companies is not None and len(params.companies)>1:
 
-        companies = list(set(v.company for v in V.values()))
+        unique_companies = list(set(company for v in V.values() for company in v.company))
         trainer_day_company = {}
 
         for trainer in T:
             for day in range(DAYS):
-                for company in companies:
+                for company in unique_companies:
                     trainer_day_company[trainer, day, company] = model.NewBoolVar(
                         f"trainer_{trainer}_day_{day}_company_{company}"
                     )
@@ -438,28 +446,28 @@ def run_solver(params: ModelParams):
 
                     for venue in V.values():
 
-                        company = venue.company
+                        companies = venue.company
+                        for company in companies:
+                            # For each day, link via reification
+                            for day in range(DAYS):
 
-                        # For each day, link via reification
-                        for day in range(DAYS):
-
-                            # If trainer assigned AND venue chosen
-                            # AND session is on this day
-                            # → activate trainer_day_company
-                            model.Add(
-                                day_session[course, session] == day
-                            ).OnlyEnforceIf([
-                                trainer_session[course, session, trainer],
-                                venue_session[course, session, venue.name],
-                                trainer_day_company[trainer, day, company]
-                            ])
+                                # If trainer assigned AND venue chosen
+                                # AND session is on this day
+                                # → activate trainer_day_company
+                                model.Add(
+                                    day_session[course, session] == day
+                                ).OnlyEnforceIf([
+                                    trainer_session[course, session, trainer],
+                                    venue_session[course, session, venue.name],
+                                    trainer_day_company[trainer, day, company]
+                                ])
 
             # Enforce max 1 company per day
             for day in range(DAYS):
                 model.Add(
                     sum(
                         trainer_day_company[trainer, day, company]
-                        for company in companies
+                        for company in unique_companies
                     ) <= 1
                 )
 
