@@ -324,25 +324,31 @@ def run_solver(params: ModelParams):
     # ===============================
     # VENUE NO-OVERLAP
     # ===============================
+    for course in C:
+        if course in S:
+            for session in S[course]:
+                for venue in V:
+                    if C[course].company != V[venue].company:
+                        model.Add(venue_session[course, session, venue] == 0)
+                    
     for venue in V:
-        company = V[venue].company
         interval_session = []
 
         for course in C:
-            if C[course].company == company:
-                if course in S:
-                    dur = C[course].duration
+            if course in S:
+                dur = C[course].duration
 
-                    for session in S[course]:
-                        interval = model.NewOptionalIntervalVar(
-                            start_session[course, session],
-                            dur,
-                            end_session[course, session],
-                            venue_session[course, session, venue],
-                            f"interval_venue_{course}_{session}_{venue}"
-                        )
+                for session in S[course]:
 
-                        interval_session.append(interval)
+                    interval = model.NewOptionalIntervalVar(
+                        start_session[course, session],
+                        dur,
+                        end_session[course, session],
+                        venue_session[course, session, venue],
+                        f"interval_venue_{course}_{session}_{venue}"
+                    )
+
+                    interval_session.append(interval)
 
         if interval_session:
             model.AddNoOverlap(interval_session)
