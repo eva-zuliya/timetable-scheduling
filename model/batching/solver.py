@@ -160,8 +160,8 @@ def run_solver(params: ModelParams):
         # -------------------------
 
         solver = cp_model.CpSolver()
-        solver.parameters.max_time_in_seconds = 30
-        solver.parameters.num_search_workers = 8
+        solver.parameters.max_time_in_seconds = params.max_time_in_seconds
+        solver.parameters.num_search_workers = params.num_search_workers
 
         status = solver.Solve(model)
 
