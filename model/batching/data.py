@@ -36,12 +36,13 @@ def read_courses(params: ModelParams, company: str):
     _df_trainee = _df_trainee[_df_trainee['employee_id'].astype(str).str.strip() != '']
     _df_trainee = _df_trainee[_df_trainee['company']==company]
     trainee_list = _df_trainee['employee_id'].unique().tolist()
+    print("Len Trainee List: ", len(trainee_list))
 
 
     _df_enrollment = pd.read_csv(params.file_master_course_trainee)
     _df_enrollment['employee_id'] = _df_enrollment['employee_id'].astype(str)
     _df_enrollment['course_name'] = _df_enrollment['course_name'].str.strip()
-    _df_enrollment = _df_enrollment[_df_enrollment['course_exist'] == 'TRUE']
+    _df_enrollment = _df_enrollment[_df_enrollment['course_exist'] == True]
 
     if params.course_stream is not None:
         _df_course = pd.read_csv(params.file_master_course)
@@ -65,6 +66,7 @@ def read_courses(params: ModelParams, company: str):
 
 
     course_list = _df_enrollment['course_name'].unique().tolist()
+    print("Len Course List: ", len(course_list))
     
     courses = {}
     for course in course_list:
@@ -113,6 +115,7 @@ def read_trainees(params: ModelParams, company: str):
 
             if enrolled_courses:  # Only include trainees with at least one course
                 shifts[trainee_name] = TraineeShift(name=trainee_name)
+                # later update based on data
   
         except Exception as e:
             # print(f"Error processing trainee row: {trainee_row}, error: {e}")

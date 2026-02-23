@@ -118,14 +118,13 @@ def run_solver(params: ModelParams):
                     ).OnlyEnforceIf(feasible[(course,b,w)])
 
                     for i in trainees:
-                        s = S[i][w]
-
-                        if s == SHIFT3:
-                            model.Add(feasible[(course,b,w)] == 0).OnlyEnforceIf(x[(course,i,b)])
-                        else:
-                            model.Add(
-                                x[(course,i,b)] <= z[(course,b,w,s)]
-                            ).OnlyEnforceIf(feasible[(course,b,w)])
+                        if i in S and w < len(S[i]):
+                            if s == SHIFT3:
+                                model.Add(feasible[(course,b,w)] == 0).OnlyEnforceIf(x[(course,i,b)])
+                            else:
+                                model.Add(
+                                    x[(course,i,b)] <= z[(course,b,w,s)]
+                                ).OnlyEnforceIf(feasible[(course,b,w)])
 
                 # Course makespan
                 for w in WEEKS:
