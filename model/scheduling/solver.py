@@ -424,12 +424,12 @@ def run_solver(params: ModelParams):
     # ===============================
     if params.companies is not None and len(params.companies)>1:
 
-        companies = list(set(company for v in V.values() for company in v.company))
+        unique_companies = list(set(company for v in V.values() for company in v.company))
         trainer_day_company = {}
 
         for trainer in T:
             for day in range(DAYS):
-                for company in companies:
+                for company in unique_companies:
                     trainer_day_company[trainer, day, company] = model.NewBoolVar(
                         f"trainer_{trainer}_day_{day}_company_{company}"
                     )
@@ -467,7 +467,7 @@ def run_solver(params: ModelParams):
                 model.Add(
                     sum(
                         trainer_day_company[trainer, day, company]
-                        for company in companies
+                        for company in unique_companies
                     ) <= 1
                 )
 
