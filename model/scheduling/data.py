@@ -121,6 +121,18 @@ def read_courses(params: ModelParams, calendar: Calendar):
             course_company = course_row['company']
             duration = min(math.ceil(course_row['duration_minutes'] / 60), params.hours_per_day)
 
+            valid_start_date = None
+            valid_end_date = None
+            if 'start_date' in course_row.index:
+                val = course_row['start_date']
+                if pd.notnull(val) and str(val).strip() != "":
+                    valid_start_date = str(val).strip()
+
+            if 'end_date' in course_row.index:
+                val = course_row['end_date']
+                if pd.notnull(val) and str(val).strip() != "":
+                    valid_end_date = str(val).strip()
+
             prereqs = _df_prereq[_df_prereq['course_name'] == course_name]
             prerequisites = [] if prereqs.empty else prereqs['prerequisite_course_name'].drop_duplicates().tolist()
 
@@ -132,6 +144,8 @@ def read_courses(params: ModelParams, calendar: Calendar):
                 name=course_name,
                 stream=course_stream,
                 duration=duration,
+                valid_start_date=valid_start_date,
+                valid_end_date=valid_end_date,
                 prerequisites=prerequisites,
                 global_sequence=sequence
             )
