@@ -96,7 +96,7 @@ def read_trainees(params: ModelParams, company: str):
     _df_enrollment = pd.read_csv(params.file_master_course_trainee)
     _df_enrollment['employee_id'] = _df_enrollment['employee_id'].astype(str)
     _df_enrollment['course_name'] = _df_enrollment['course_name'].str.strip()
-    _df_enrollment = _df_enrollment[_df_enrollment['course_exist'] == 'TRUE']
+    _df_enrollment = _df_enrollment[_df_enrollment['course_exist'] == True]
 
     if params.course_stream is not None:
         _df_course = pd.read_csv(params.file_master_course)
@@ -125,6 +125,7 @@ def read_trainees(params: ModelParams, company: str):
             shift_w2 = trainee_row['shift_w2']
             shift_w3 = trainee_row['shift_w3']
             shift_w4 = trainee_row['shift_w4']
+            shift_w4 = shift_w1
             
             # Get courses for this trainee from enrollment dataframe
             enrolled_courses = _df_enrollment[_df_enrollment['employee_id'] == trainee_name]['course_name'].drop_duplicates().tolist()

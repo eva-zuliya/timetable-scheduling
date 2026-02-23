@@ -104,27 +104,99 @@ def run_solver(params: ModelParams):
                 model.Add(min_size[course] <= size[(course,b)]).OnlyEnforceIf(batch_used[(course,b)])
                 model.Add(max_size[course] >= size[(course,b)]).OnlyEnforceIf(batch_used[(course,b)])
 
+
                 for w in WEEKS:
-
-                    # At most one shift per week
-                    model.Add(sum(z[(course,b,w,s)] for s in SHIFTS) <= 1)
-
-                    # Run only if feasible
                     model.Add(run[(course,b,w)] <= feasible[(course,b,w)])
 
-                    # If feasible, must choose exactly one shift
                     model.Add(
                         sum(z[(course,b,w,s)] for s in SHIFTS) == 1
                     ).OnlyEnforceIf(feasible[(course,b,w)])
 
+                    model.Add(
+                        sum(z[(course,b,w,s)] for s in SHIFTS) == 0
+                    ).OnlyEnforceIf(feasible[(course,b,w)].Not())
+
+                    # ---- Detect S1 and S2 presence ----
+
+                    s1_present = model.NewBoolVar(f"s1_present_{course}_{b}_{w}")
+                    s2_present = model.NewBoolVar(f"s2_present_{course}_{b}_{w}")
+
+                    s1_count = sum(
+                        x[(course,i,b)]
+                        for i in trainees
+                        if i in S and w < len(S[i]) and S[i][w] == 1
+                    )
+
+                    s2_count = sum(
+                        x[(course,i,b)]
+                        for i in trainees
+                        if i in S and w < len(S[i]) and S[i][w] == 2
+                    )
+
+                    # Link presence booleans
+                    model.Add(s1_count >= 1).OnlyEnforceIf(s1_present)
+                    model.Add(s1_count == 0).OnlyEnforceIf(s1_present.Not())
+
+                    model.Add(s2_count >= 1).OnlyEnforceIf(s2_present)
+                    model.Add(s2_count == 0).OnlyEnforceIf(s2_present.Not())
+
+                    # ---- SHIFT3 makes infeasible ----
                     for i in trainees:
-                        if i in S and w < len(S[i]):
-                            if s == SHIFT3:
-                                model.Add(feasible[(course,b,w)] == 0).OnlyEnforceIf(x[(course,i,b)])
-                            else:
-                                model.Add(
-                                    x[(course,i,b)] <= z[(course,b,w,s)]
-                                ).OnlyEnforceIf(feasible[(course,b,w)])
+                        if i in S and w < len(S[i]) and S[i][w] == SHIFT3:
+                            model.Add(feasible[(course,b,w)] == 0)\
+                                .OnlyEnforceIf(x[(course,i,b)])
+
+                    # ---- If both S1 and S2 present → infeasible ----
+                    model.Add(feasible[(course,b,w)] == 0)\
+                        .OnlyEnforceIf([s1_present, s2_present])
+
+                    # ---- Dominant shift selection ----
+                    model.Add(z[(course,b,w,1)] == 1)\
+                        .OnlyEnforceIf([s1_present, s2_present.Not(), feasible[(course,b,w)]])
+
+                    model.Add(z[(course,b,w,2)] == 1)\
+                        .OnlyEnforceIf([s2_present, s1_present.Not(), feasible[(course,b,w)]])
+
+                    model.Add(z[(course,b,w,0)] == 1)\
+                        .OnlyEnforceIf([s1_present.Not(), s2_present.Not(), feasible[(course,b,w)]])
+
+
+                # for w in WEEKS:
+                #     model.Add(run[(course,b,w)] <= feasible[(course,b,w)])
+
+                #     model.Add(
+                #         sum(z[(course,b,w,s)] for s in SHIFTS) == 1
+                #     ).OnlyEnforceIf(feasible[(course,b,w)])
+
+                #     model.Add(
+                #         sum(z[(course,b,w,s)] for s in SHIFTS) == 0
+                #     ).OnlyEnforceIf(feasible[(course,b,w)].Not())
+
+                #     for s in SHIFTS:
+                #         for i in trainees:
+                #             if i in S and w < len(S[i]):
+                #                 trainee_shift = S[i][w]
+
+                #                 # If trainee unavailable → batch infeasible
+                #                 if trainee_shift == SHIFT3:
+                #                     model.Add(feasible[(course,b,w)] == 0)\
+                #                         .OnlyEnforceIf(x[(course,i,b)])
+
+                #                 else:
+                #                     # If batch chooses shift s,
+                #                     # trainee must be compatible with s
+                #                     compatible = False
+
+                #                     if trainee_shift == 0:
+                #                         compatible = True
+                #                     elif trainee_shift == 1 and s == 1:
+                #                         compatible = True
+                #                     elif trainee_shift == 2 and s == 2:
+                #                         compatible = True
+
+                #                     if not compatible:
+                #                         model.Add(z[(course,b,w,s)] == 0)\
+                #                             .OnlyEnforceIf(x[(course,i,b)])
 
                 # Course makespan
                 for w in WEEKS:
@@ -187,7 +259,6 @@ def run_solver(params: ModelParams):
 
                         # Determine overlapped shift per week
                         week_shifts = {}
-
                         for w in WEEKS:
 
                             # Default = unavailable
@@ -211,21 +282,14 @@ def run_solver(params: ModelParams):
                                 "week2": week_shifts[1],
                                 "week3": week_shifts[2],
                                 "week4": week_shifts[3],
+                                "rotating_shift": data.shifts[trainee].rotating_shift_list
                             })
 
                         batch_counter += 1
 
             df = pd.DataFrame(rows)
-            if not df.empty:
-                # Get all columns except "trainee_id"
-                group_cols = [col for col in df.columns if col != "trainee_id"]
-                # For each unique combination in the grouping columns, count the number of trainees
-                pivot = (df
-                         .groupby(group_cols, as_index=False)
-                         .agg(trainee_count=('trainee_id', 'count')))
-                print("\nPivot table (with all columns except 'trainee_id', + count of trainees):\n", pivot)
-            
-            # print(df)
+            print(df)
+
             dfs_batch[company] = df.copy()
 
         else:

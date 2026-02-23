@@ -10,7 +10,7 @@ class CourseStats(BaseModel):
     count_trainee: int
     count_trainers: int
     max_venue_capacity_available: int
-    min_batches: int = 2
+    min_batches: int = 3
     
     @property
     def max_batches(self):
@@ -40,6 +40,10 @@ class TraineeShift(BaseModel):
             2: self.week3,
             3: self.week4
         }
+    
+    @property
+    def rotating_shift_list(self):
+        return [self.week1, self.week2, self.week3, self.week4]
 
 
 class ModelInput(BaseModel):
