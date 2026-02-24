@@ -104,7 +104,6 @@ def run_solver(params: ModelParams):
                 model.Add(min_size[course] <= size[(course,b)]).OnlyEnforceIf(batch_used[(course,b)])
                 model.Add(max_size[course] >= size[(course,b)]).OnlyEnforceIf(batch_used[(course,b)])
 
-
                 for w in WEEKS:
                     model.Add(run[(course,b,w)] <= feasible[(course,b,w)])
 
@@ -116,11 +115,7 @@ def run_solver(params: ModelParams):
                         sum(z[(course,b,w,s)] for s in SHIFTS) == 0
                     ).OnlyEnforceIf(feasible[(course,b,w)].Not())
 
-                    # ---- Detect S1 and S2 presence ----
-
-                    s1_present = model.NewBoolVar(f"s1_present_{course}_{b}_{w}")
-                    s2_present = model.NewBoolVar(f"s2_present_{course}_{b}_{w}")
-
+                    # --- Count S1, S2, S3 ---
                     s1_count = sum(
                         x[(course,i,b)]
                         for i in trainees
@@ -133,32 +128,100 @@ def run_solver(params: ModelParams):
                         if i in S and w < len(S[i]) and S[i][w] == 2
                     )
 
-                    # Link presence booleans
+                    s3_count = sum(
+                        x[(course,i,b)]
+                        for i in trainees
+                        if i in S and w < len(S[i]) and S[i][w] == SHIFT3
+                    )
+
+                    # --- Create presence booleans properly ---
+                    s1_present = model.NewBoolVar(f"s1_present_{course}_{b}_{w}")
+                    s2_present = model.NewBoolVar(f"s2_present_{course}_{b}_{w}")
+                    s3_present = model.NewBoolVar(f"s3_present_{course}_{b}_{w}")
+
                     model.Add(s1_count >= 1).OnlyEnforceIf(s1_present)
                     model.Add(s1_count == 0).OnlyEnforceIf(s1_present.Not())
 
                     model.Add(s2_count >= 1).OnlyEnforceIf(s2_present)
                     model.Add(s2_count == 0).OnlyEnforceIf(s2_present.Not())
 
-                    # ---- SHIFT3 makes infeasible ----
-                    for i in trainees:
-                        if i in S and w < len(S[i]) and S[i][w] == SHIFT3:
-                            model.Add(feasible[(course,b,w)] == 0)\
-                                .OnlyEnforceIf(x[(course,i,b)])
+                    model.Add(s3_count >= 1).OnlyEnforceIf(s3_present)
+                    model.Add(s3_count == 0).OnlyEnforceIf(s3_present.Not())
 
-                    # ---- If both S1 and S2 present → infeasible ----
-                    model.Add(feasible[(course,b,w)] == 0)\
-                        .OnlyEnforceIf([s1_present, s2_present])
+                    # --- S3 makes infeasible ---
+                    model.Add(feasible[(course,b,w)] == 0).OnlyEnforceIf(s3_present)
 
-                    # ---- Dominant shift selection ----
+                    # --- S1 and S2 together makes infeasible ---
+                    conflict = model.NewBoolVar(f"conflict_{course}_{b}_{w}")
+                    model.AddBoolAnd([s1_present, s2_present]).OnlyEnforceIf(conflict)
+                    model.AddBoolOr([s1_present.Not(), s2_present.Not()]).OnlyEnforceIf(conflict.Not())
+
+                    model.Add(feasible[(course,b,w)] == 0).OnlyEnforceIf(conflict)
+
+                    # --- Dominant shift selection ---
                     model.Add(z[(course,b,w,1)] == 1)\
-                        .OnlyEnforceIf([s1_present, s2_present.Not(), feasible[(course,b,w)]])
+                        .OnlyEnforceIf([feasible[(course,b,w)], s1_present, s2_present.Not()])
 
                     model.Add(z[(course,b,w,2)] == 1)\
-                        .OnlyEnforceIf([s2_present, s1_present.Not(), feasible[(course,b,w)]])
+                        .OnlyEnforceIf([feasible[(course,b,w)], s2_present, s1_present.Not()])
 
                     model.Add(z[(course,b,w,0)] == 1)\
-                        .OnlyEnforceIf([s1_present.Not(), s2_present.Not(), feasible[(course,b,w)]])
+                        .OnlyEnforceIf([feasible[(course,b,w)], s1_present.Not(), s2_present.Not()])
+
+                # for w in WEEKS:
+                #     model.Add(run[(course,b,w)] <= feasible[(course,b,w)])
+
+                #     model.Add(
+                #         sum(z[(course,b,w,s)] for s in SHIFTS) == 1
+                #     ).OnlyEnforceIf(feasible[(course,b,w)])
+
+                #     model.Add(
+                #         sum(z[(course,b,w,s)] for s in SHIFTS) == 0
+                #     ).OnlyEnforceIf(feasible[(course,b,w)].Not())
+
+                #     # ---- Detect S1 and S2 presence ----
+
+                #     s1_present = model.NewBoolVar(f"s1_present_{course}_{b}_{w}")
+                #     s2_present = model.NewBoolVar(f"s2_present_{course}_{b}_{w}")
+
+                #     s1_count = sum(
+                #         x[(course,i,b)]
+                #         for i in trainees
+                #         if i in S and w < len(S[i]) and S[i][w] == 1
+                #     )
+
+                #     s2_count = sum(
+                #         x[(course,i,b)]
+                #         for i in trainees
+                #         if i in S and w < len(S[i]) and S[i][w] == 2
+                #     )
+
+                #     # Link presence booleans
+                #     model.Add(s1_count >= 1).OnlyEnforceIf(s1_present)
+                #     model.Add(s1_count == 0).OnlyEnforceIf(s1_present.Not())
+
+                #     model.Add(s2_count >= 1).OnlyEnforceIf(s2_present)
+                #     model.Add(s2_count == 0).OnlyEnforceIf(s2_present.Not())
+
+                #     # ---- SHIFT3 makes infeasible ----
+                #     for i in trainees:
+                #         if i in S and w < len(S[i]) and S[i][w] == SHIFT3:
+                #             model.Add(feasible[(course,b,w)] == 0)\
+                #                 .OnlyEnforceIf(x[(course,i,b)])
+
+                #     # ---- If both S1 and S2 present → infeasible ----
+                #     model.Add(feasible[(course,b,w)] == 0)\
+                #         .OnlyEnforceIf([s1_present, s2_present])
+
+                #     # ---- Dominant shift selection ----
+                #     model.Add(z[(course,b,w,1)] == 1)\
+                #         .OnlyEnforceIf([s1_present, s2_present.Not(), feasible[(course,b,w)]])
+
+                #     model.Add(z[(course,b,w,2)] == 1)\
+                #         .OnlyEnforceIf([s2_present, s1_present.Not(), feasible[(course,b,w)]])
+
+                #     model.Add(z[(course,b,w,0)] == 1)\
+                #         .OnlyEnforceIf([s1_present.Not(), s2_present.Not(), feasible[(course,b,w)]])
 
 
                 # for w in WEEKS:
