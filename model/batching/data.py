@@ -31,7 +31,8 @@ def read_courses(params: ModelParams, company: str):
     max_venue_capacity_available = _df_venue['capacity'].max()
 
     _df_trainee = pd.read_csv(params.file_master_trainee)
-    _df_trainee['employee_id'] = _df_trainee['employee_id'].astype(str)
+    _df_trainee['employee_id'] = _df_trainee['employee_id'].astype(str).str.strip()
+    _df_trainee['company'] = _df_trainee['company'].astype(str).str.strip()
     _df_trainee = _df_trainee.drop_duplicates(subset=["employee_id"])
     _df_trainee = _df_trainee[_df_trainee['employee_id'].astype(str).str.strip() != '']
     _df_trainee = _df_trainee[_df_trainee['company']==company]
@@ -40,13 +41,20 @@ def read_courses(params: ModelParams, company: str):
 
 
     _df_enrollment = pd.read_csv(params.file_master_course_trainee)
-    _df_enrollment['employee_id'] = _df_enrollment['employee_id'].astype(str)
-    _df_enrollment['course_name'] = _df_enrollment['course_name'].str.strip()
+    _df_enrollment['employee_id'] = _df_enrollment['employee_id'].astype(str).str.strip()
+    _df_enrollment['course_name'] = _df_enrollment['course_name'].astype(str).str.strip()
     _df_enrollment = _df_enrollment[_df_enrollment['course_exist'] == True]
 
-    if params.course_stream is not None:
+    if params.course_stream is not None or params.companies is not None:
         _df_course = pd.read_csv(params.file_master_course)
-        _df_course = _df_course[_df_course["stream"].isin(params.course_stream)]
+        _df_course['stream'] = _df_course['stream'].astype(str).str.strip()
+        _df_course['company'] = _df_course['company'].astype(str).str.strip()
+
+        if params.companies is not None:
+            _df_course = _df_course[_df_course["company"].isin(params.companies)]
+
+        if params.course_stream is not None:
+            _df_course = _df_course[_df_course["stream"].isin(params.course_stream)]
 
         _course_list = _df_course['course_name'].drop_duplicates().tolist()
         _df_enrollment = _df_enrollment[_df_enrollment["course_name"].isin(_course_list)]
@@ -56,12 +64,12 @@ def read_courses(params: ModelParams, company: str):
 
     _df_trainer = pd.read_csv(params.file_master_trainer)
     _df_trainer = _df_trainer.drop_duplicates(subset=["trainer_id"])
-    _df_trainer['trainer_id'] = _df_trainer['trainer_id'].astype(str)
+    _df_trainer['trainer_id'] = _df_trainer['trainer_id'].astype(str).str.strip()
     _df_trainer = _df_trainer[_df_trainer['trainer_id'] != '']
     trainer_list = _df_trainer['trainer_id'].unique().tolist()
     
     _df_eligible = pd.read_csv(params.file_master_course_trainer)
-    _df_eligible['trainer_id'] = _df_eligible['trainer_id'].astype(str)
+    _df_eligible['trainer_id'] = _df_eligible['trainer_id'].astype(str).str.strip()
     _df_eligible = _df_eligible[_df_eligible["trainer_id"].isin(trainer_list)]
 
 
@@ -91,6 +99,7 @@ def read_trainees(params: ModelParams, company: str):
     _df_trainee['employee_id'] = _df_trainee['employee_id'].astype(str)
     _df_trainee = _df_trainee.drop_duplicates(subset=["employee_id"])
     _df_trainee = _df_trainee[_df_trainee['employee_id'].astype(str).str.strip() != '']
+    _df_trainee['company'] = _df_trainee['company'].astype(str).str.strip()
     _df_trainee = _df_trainee[_df_trainee['company']==company]
 
     _df_enrollment = pd.read_csv(params.file_master_course_trainee)
@@ -100,6 +109,8 @@ def read_trainees(params: ModelParams, company: str):
 
     if params.course_stream is not None:
         _df_course = pd.read_csv(params.file_master_course)
+        _df_course['stream'] = _df_course['stream'].astype(str).str.strip()
+        _df_course['course_name'] = _df_course['course_name'].astype(str).str.strip()
         _df_course = _df_course[_df_course["stream"].isin(params.course_stream)]
 
         _course_list = _df_course['course_name'].drop_duplicates().tolist()

@@ -6,6 +6,7 @@ from .schema import *
 from .utils import hour_index_to_time
 import datetime
 from .data import read_data
+pd.set_option('display.max_columns', None)
 
 
 def run_solver(params: ModelParams):
@@ -58,13 +59,15 @@ def run_solver(params: ModelParams):
 
     for course in C:
         if course in S:
-            dur = C[course].duration
+            dur = C[course].course_batch_duration
             start_session_valid_domain = C[course].valid_start_domain
 
             for session in S[course]:
                 active_session[course, session] = model.NewBoolVar(f"active_{course}_{session}")
 
                 if start_session_valid_domain is not None and params.is_considering_shift:
+                    # print(f"Course {course} duration: {dur}, valid start domain: {start_session_valid_domain}")
+                    
                     start_session[course, session] = model.NewIntVarFromDomain(
                         cp_model.Domain.FromValues(start_session_valid_domain),
                         f"start_{course}_{session}"
@@ -156,36 +159,36 @@ def run_solver(params: ModelParams):
                 )
 
 
-    # ===============================
-    # SHIFT CONSTRINTS
-    # ===============================
-    if params.is_considering_shift:
-        hour_session = {}
+    # # ===============================
+    # # SHIFT CONSTRINTS
+    # # ===============================
+    # if params.is_considering_shift:
+    #     hour_session = {}
 
-        for course in C:
-            for session in S[course]:
-                hour_session[course, session] = model.NewIntVar(0, HOURS_PER_DAY - 1, f"hour_{course}_{session}")
+    #     for course in C:
+    #         for session in S[course]:
+    #             hour_session[course, session] = model.NewIntVar(0, HOURS_PER_DAY - 1, f"hour_{course}_{session}")
 
-                model.Add(
-                    hour_session[course, session] ==
-                    start_session[course, session] - (day_session[course, session] * HOURS_PER_DAY)
-                )
+    #             model.Add(
+    #                 hour_session[course, session] ==
+    #                 start_session[course, session] - (day_session[course, session] * HOURS_PER_DAY)
+    #             )
 
-        for group in G:
-            shift_start = G[group].shift_start_hour
-            shift_end = G[group].shift_end_hour
+    #     for group in G:
+    #         shift_start = G[group].shift_start_hour
+    #         shift_end = G[group].shift_end_hour
 
-            for course in G[group].courses:
-                dur = C[course].duration
+    #         for course in G[group].courses:
+    #             dur = C[course].duration
 
-                for session in S[course]:
-                    model.Add(
-                        hour_session[course, session] >= shift_start
-                    ).OnlyEnforceIf(assign[group, course, session])
+    #             for session in S[course]:
+    #                 model.Add(
+    #                     hour_session[course, session] >= shift_start
+    #                 ).OnlyEnforceIf(assign[group, course, session])
 
-                    model.Add(
-                        hour_session[course, session] + dur <= shift_end
-                    ).OnlyEnforceIf(assign[group, course, session])
+    #                 model.Add(
+    #                     hour_session[course, session] + dur <= shift_end
+    #                 ).OnlyEnforceIf(assign[group, course, session])
 
 
     # ===============================
@@ -206,26 +209,63 @@ def run_solver(params: ModelParams):
     # ===============================
     # VALID PERIOD CONSTRAINTS FOR COURSES
     # ===============================
-    for course in C:
-        if course in S:
-            valid_start = C[course].valid_start_date
-            valid_end = C[course].valid_end_date
+    # print(CALENDAR)
+    # for course in C:
+    #     if course in S:
+    #         valid_start = C[course].valid_start_date
+    #         valid_end = C[course].valid_end_date
 
-            if valid_start:
-                valid_start_day = CALENDAR.index[valid_start]
+    #         if valid_start:
+    #             valid_start_day = CALENDAR.index[valid_start]
 
+    #             for session in S[course]:
+    #                 model.Add(
+    #                     day_session[course, session] >= valid_start_day
+    #                 ).OnlyEnforceIf(active_session[course, session])
+
+    #         if valid_end:
+    #             valid_end_day = CALENDAR.index[valid_end]
+
+    #             for session in S[course]:
+    #                 model.Add(
+    #                     day_session[course, session] <= valid_end_day
+    #                 ).OnlyEnforceIf(active_session[course, session])
+
+    
+    # ===============================
+    # BLOCKED PERIOD FOR TRAINER
+    # ===============================
+    if params.is_blocking_schedule:
+        for trainer in T:
+            if T[trainer].blocked_start_time:
+                for course in C:
+                    if course in S:
+                        if eligible.get((trainer, course), 0):
+                            for session in S[course]:
+                                model.AddForbiddenAssignments(
+                                    [start_session[course, session]],
+                                    [[v] for v in T[trainer].blocked_start_time]
+                                ).OnlyEnforceIf(
+                                    trainer_session[course, session, trainer],
+                                    active_session[course, session]
+                                )
+    
+
+    # ===============================
+    # BLOCKED PERIOD FOR TRAINEE
+    # ===============================
+    if params.is_blocking_schedule:
+        for group in G:
+            for course in G[group].courses:
                 for session in S[course]:
-                    model.Add(
-                        day_session[course, session] >= valid_start_day
-                    ).OnlyEnforceIf(active_session[course, session])
-
-            if valid_end:
-                valid_end_day = CALENDAR.index[valid_end]
-
-                for session in S[course]:
-                    model.Add(
-                        day_session[course, session] <= valid_end_day
-                    ).OnlyEnforceIf(active_session[course, session])
+                    if G[group].blocked_start_time:
+                        model.AddForbiddenAssignments(
+                            [start_session[course, session]],
+                            [[v] for v in G[group].blocked_start_time]
+                        ).OnlyEnforceIf(
+                            assign[group, course, session],
+                            active_session[course, session]
+                        )
 
 
     # ===============================
@@ -236,7 +276,7 @@ def run_solver(params: ModelParams):
             terms = []
 
             for course in G[group].courses:
-                dur = min(C[course].duration, MAX_SESSION_LENGTH)
+                dur = min(C[course].course_batch_duration, MAX_SESSION_LENGTH)
 
                 for session in S[course]:
 
@@ -279,7 +319,7 @@ def run_solver(params: ModelParams):
         interval_session = []
 
         for course in G[group].courses:
-            dur = C[course].duration
+            dur = C[course].course_batch_duration
 
             for session in S[course]:
                 interval = model.NewOptionalIntervalVar(
@@ -303,7 +343,7 @@ def run_solver(params: ModelParams):
 
         for course in C:
             if course in S:
-                dur = C[course].duration
+                dur = C[course].course_batch_duration
 
                 for session in S[course]:
                     if (course, session, trainer) in trainer_session:
@@ -338,7 +378,7 @@ def run_solver(params: ModelParams):
 
         for course in C:
             if course in S:
-                dur = C[course].duration
+                dur = C[course].course_batch_duration
 
                 for session in S[course]:
 
@@ -374,7 +414,7 @@ def run_solver(params: ModelParams):
 
 
     # ===============================
-    # PREREQUISITES (SUBGROUP LEVEL)
+    # PREREQUISITES (PERSONAL LEVEL)
     # ===============================
     for group in G:
         for course in G[group].courses:
@@ -408,6 +448,7 @@ def run_solver(params: ModelParams):
 
                 for s_course in S[course]:
                     for s_pre in S[prereq]:
+                        
 
                         model.Add(
                             end_session[prereq, s_pre] <= start_session[course, s_course]
@@ -497,7 +538,7 @@ def run_solver(params: ModelParams):
         terms = []
         for course in C:
             if course in S:
-                dur = C[course].duration
+                dur = C[course].course_batch_duration
 
                 for session in S[course]:
                     b = model.NewBoolVar(f"is_{course}_{session}_day_{day}")
@@ -533,7 +574,7 @@ def run_solver(params: ModelParams):
         model.Add(
             trainer_load[trainer] ==
             sum(
-                C[course].duration * trainer_session[course, session, trainer]
+                C[course].course_batch_duration * trainer_session[course, session, trainer]
                     for course in C
                         for session in S.get(course, [])
                     if (course, session, trainer) in trainer_session
@@ -771,7 +812,7 @@ def run_solver(params: ModelParams):
         ])
 
         print("\nSCHEDULE (TRAINEE LEVEL):")
-        print(df_detailed)
+        # print(df_detailed)
 
         df_detailed.to_csv(
             f"export/{params.report_name}_trainee_schedule.csv",

@@ -15,6 +15,7 @@ class Venue(BaseModel):
 class Trainer(BaseModel):
     name: str
     eligible: list[str]
+    blocked_start_time: Optional[list[int]] = None
 
 
 class Course(BaseModel):
@@ -36,27 +37,19 @@ class CourseBatch(Course):
     def id(self):
         return f"[{self.company}]-[{self.name}]-[{self.batch_number}]"
 
+    @property
+    def course_batch_duration(self):
+        if self.valid_start_domain is None:
+            return self.duration
+        
+        return 4
+
 
 class Trainee(BaseModel):
     company:str
     name: str
-    shift: Literal["Non Shift", "Shift 1", "Shift 2", "NS"]
     courses: list[str]
     cycle: Literal["WDays", "WEnd"] = "WDays"
-
-    @property
-    def shift_start_hour(self):
-        if self.shift in ["Shift 1"]:
-            return 4
-        
-        return 0
-    
-    @property
-    def shift_end_hour(self):
-        if self.shift in ["Shift 2"]:
-            return 4
-        
-        return 8
 
 
 class Group(BaseModel):
@@ -64,15 +57,8 @@ class Group(BaseModel):
     courses: list[str]  # Id of the CourseBatch
     trainees: list[str]
     subgroup: dict[str, list[str]] = None
-    shift: Literal["Non Shift", "Shift 1", "Shift 2", "NS"]
-    shift_start_hour: Literal[0, 4]
-    shift_end_hour: Literal[4, 8]
     cycle: Literal["WDays", "WEnd"] = "WDays"
-
-    def split_subgroups(self, max_size: int):
-        self.subgroup = {}
-        for i in range(0, len(self.trainees), max_size):
-            self.subgroup[f"U{i//max_size + 1}"] = self.trainees[i:i+max_size]
+    blocked_start_time: Optional[list[int]] = None
 
 
 class Date(BaseModel):

@@ -2,48 +2,46 @@ from .schema import Group
 import pandas as pd
 
 
-def week_to_horizon_slots(
-    week_groups: dict[int, list[int]],
-    week_shifts: dict[int, int],   # {week_index: shift}
-    max_day_working_hours: int
-):
-
-    # ✅ If all weeks are NonShift (0), no restriction needed
+def week_to_horizon_slots(week_groups: dict[int, list[int]], week_shifts: dict[int, int], max_day_working_hours: int):
+    # If all weeks are NonShift (0), no restriction needed
     if all(shift == 0 for shift in week_shifts.values()):
         return None
 
     valid_slots = []
     half = max_day_working_hours // 2
 
-    for week_idx, shift in week_shifts.items():
+    # ------------------------------
+    # 🔁 Expand shift list to match week_groups length
+    # ------------------------------
+    shift_list = list(week_shifts.values())
+    total_weeks = len(week_groups)
 
-        if week_idx not in week_groups:
-            continue
+    expanded_shifts = [
+        shift_list[(i % len(shift_list))]      # cycle
+        for i in range(total_weeks)
+    ]
+    # Now expanded_shifts[i] corresponds to week (i+1)
 
-        for day_index in week_groups[week_idx]:
+    # ------------------------------
+    # Process each week
+    # ------------------------------
+    for week_idx, days in week_groups.items():
+        shift = expanded_shifts[week_idx - 1]  # week_idx starts at 1
 
+        for day_index in days:
             day_start = day_index * max_day_working_hours
 
             # NonShift → full day
             if shift == 0:
-                valid_slots.extend(
-                    range(day_start,
-                          day_start + max_day_working_hours)
-                )
+                valid_slots.extend(range(day_start, day_start + max_day_working_hours))
 
-            # Overlap Shift1 → use second half
+            # Shift1 → second half
             elif shift == 1:
-                valid_slots.extend(
-                    range(day_start + half,
-                          day_start + max_day_working_hours)
-                )
+                valid_slots.extend(range(day_start + half, day_start + max_day_working_hours))
 
-            # Overlap Shift2 → use first half
+            # Shift2 → first half
             elif shift == 2:
-                valid_slots.extend(
-                    range(day_start,
-                          day_start + half)
-                )
+                valid_slots.extend(range(day_start, day_start + half))
 
             # Shift3 → no slots
             elif shift == 3:

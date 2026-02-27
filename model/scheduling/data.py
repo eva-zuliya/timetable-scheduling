@@ -24,7 +24,7 @@ def read_data(params: ModelParams) -> ModelInput:
         )
     )
 
-    # print_trainers = {trainer.name: trainer.model_dump() for trainer in trainers.values()}
+    print_trainers = {trainer.name: trainer.model_dump() for trainer in trainers.values() if len(trainer.eligible) > 0}
     # print("\n", highlight(json.dumps(print_trainers, indent=4), lexers.JsonLexer(), formatters.TerminalFormatter()), "\n")
 
     groups = read_trainees(params)
@@ -32,13 +32,31 @@ def read_data(params: ModelParams) -> ModelInput:
     for key, group in groups.items():
         groups[key].courses = [x for x in group.courses if x in course_list and x in unique_trained_courses_list]
 
-    print_group = {group.name: group.model_dump() for group in groups.values()}
+    fields = ["name", "courses", "trainees"]
+    print_group = {
+        group.name: {k: v for k, v in group.model_dump().items() if k in fields}
+        for group in groups.values()
+            if len(group.courses) > 0
+    }
+
     for key in list(print_group.keys()):
         print_group[key]["trainees"] = len(print_group[key]["trainees"])
 
     print("\n", highlight(json.dumps(print_group, indent=4), lexers.JsonLexer(), formatters.TerminalFormatter()), "\n")
 
+
+    fields = ["company", "name", "stream", "prerequisites", "global_sequence"]
+    print_course_batches = {
+        batch.id: {k: v for k, v in batch.model_dump().items() if k in fields}
+        for batch in course_batches.values()
+    }
+    print("\n\n\n", highlight(json.dumps(print_course_batches, indent=4), lexers.JsonLexer(), formatters.TerminalFormatter()), "\n")
+
+
     venue = read_venue(params)
+
+    if params.is_blocking_schedule:
+        trainers, groups = read_blocked_schedule(params, calendar, trainers, groups)
 
     return ModelInput(
         calendar=calendar,
@@ -104,7 +122,12 @@ def read_courses(params: ModelParams, calendar: Calendar):
         _df_prereq['is_global_sequence'] = False
 
     if params.course_stream is not None:
+        _df_course['stream'] = _df_course['stream'].str.strip()
         _df_course = _df_course[_df_course["stream"].isin(params.course_stream)]
+
+    if params.companies is not None:
+        _df_course['company'] = _df_course['company'].str.strip()
+        _df_course = _df_course[_df_course["company"].isin(params.companies)]
     
 
     list_course_name = _df_course['course_name'].unique().tolist()
@@ -136,6 +159,10 @@ def read_courses(params: ModelParams, calendar: Calendar):
             prereqs = _df_prereq[_df_prereq['course_name'] == course_name]
             prerequisites = [] if prereqs.empty else prereqs['prerequisite_course_name'].drop_duplicates().tolist()
 
+            if prerequisites and course_name in prerequisites:
+                print(f"\033[91mWarning: Course '{course_name}' has itself as a prerequisite. Removing it from the prerequisites list.\033[0m")
+                raise SystemExit("Stopping program")
+            
             seq = _df_prereq[(_df_prereq['course_name'] == course_name) & (_df_prereq['is_global_sequence'])]
             sequence = [] if seq.empty else seq['prerequisite_course_name'].drop_duplicates().tolist()
 
@@ -157,32 +184,39 @@ def read_courses(params: ModelParams, calendar: Calendar):
     batches_mapping = {}
     default_batch = {"batch_no": 1, "week1": 0, "week2": 0, "week3": 0, "week4": 0}
 
-    if params.file_master_course_batch is None:
+
+
+    if not params.is_considering_shift:
         for course in courses.values():
             batches_mapping[course.company, course.name] = [default_batch]
-    
+
     else:
-        dfs = []
-        for file in params.file_master_course_batch:
-            dfs.append(pd.read_csv(file))
+        if params.file_master_course_batch is None:
+            for course in courses.values():
+                batches_mapping[course.company, course.name] = [default_batch]
+        
+        else:
+            dfs = []
+            for file in params.file_master_course_batch:
+                dfs.append(pd.read_csv(file))
 
-        _df_batch = pd.concat(dfs, ignore_index=True)
-        _df_batch['course_name'] = _df_batch['course_name'].str.strip()
+            _df_batch = pd.concat(dfs, ignore_index=True)
+            _df_batch['course_name'] = _df_batch['course_name'].str.strip()
 
-        for (company, course, batch), group in _df_batch.groupby(
-            ["company", "course_name", "batch_no"]
-        ):
-            row = group.iloc[0]
-            key = (company, course)
-            batch_dict = {
-                "batch_no": batch,
-                "week1": row["week1"],
-                "week2": row["week2"],
-                "week3": row["week3"],
-                "week4": row["week4"],
-            }
+            for (company, course, batch), group in _df_batch.groupby(
+                ["company", "course_name", "batch_no"]
+            ):
+                row = group.iloc[0]
+                key = (company, course)
+                batch_dict = {
+                    "batch_no": batch,
+                    "week1": row["week1"],
+                    "week2": row["week2"],
+                    "week3": row["week3"],
+                    "week4": row["week4"],
+                }
 
-            batches_mapping.setdefault(key, []).append(batch_dict)
+                batches_mapping.setdefault(key, []).append(batch_dict)
 
 
     week_groups = calendar.week_groups
@@ -249,38 +283,53 @@ def read_courses(params: ModelParams, calendar: Calendar):
 def read_trainers(params: ModelParams, course_batches_mapping: dict[tuple[str, str], list[str]]):
     _df_trainer = pd.read_csv(params.file_master_trainer)
     _df_trainer = _df_trainer.drop_duplicates(subset=["trainer_id"])
-    _df_trainer['trainer_id'] = _df_trainer['trainer_id'].astype(str)
+    _df_trainer['trainer_id'] = _df_trainer['trainer_id'].astype(str).str.strip()
     _df_trainer = _df_trainer[_df_trainer['trainer_id'] != '']
     
     _df_eligible = pd.read_csv(params.file_master_course_trainer)
-    _df_eligible['trainer_id'] = _df_eligible['trainer_id'].astype(str)
+    _df_eligible['trainer_id'] = _df_eligible['trainer_id'].astype(str).str.strip()
+    _df_eligible['company'] = _df_eligible['company'].astype(str).str.strip()
+    _df_eligible['course_name'] = _df_eligible['course_name'].astype(str).str.strip()
 
     trainers = {}
     for _, trainer_row in _df_trainer.iterrows():
         try:
             trainer_id = trainer_row['trainer_id']
-            eligible_pairs = (
+            eligible_pairs = list(
                 _df_eligible[_df_eligible['trainer_id'] == trainer_id]
-                .drop_duplicates(subset=['company', 'course_name'])
-                [['company', 'course_name']]
-                .itertuples(index=False, name=None)
+                    .drop_duplicates(subset=['company', 'course_name'])
+                    [['company', 'course_name']]
+                    .itertuples(index=False, name=None)
             )
+
+            # if trainer_id == '6838':
+            #     print(f"Processing trainer: {trainer_id}, Eligible pairs: {eligible_pairs}")
+
+            #     print(course_batches_mapping['SMU HO', '(EUT) SMU HO - WGO - Display Material Master'])
+            #     print(type(eligible_pairs))
+
+            #     raise SystemExit("Stopping program")
 
             eligible_course_batches = [
                 item
                 for company, course_name in eligible_pairs
-                if (company, course_name) in course_batches_mapping
-                for item in course_batches_mapping[(company, course_name)]
+                    if (company, course_name) in course_batches_mapping
+                        for item in course_batches_mapping[(company, course_name)]
             ]
 
-            if eligible_pairs:
+            # print(f"Trainer: {trainer_id}, Eligible course batches: {eligible_course_batches}")
+
+            if eligible_course_batches:
                 trainers[trainer_id] = Trainer(
                     name=trainer_id,
                     eligible=eligible_course_batches
                 )
 
+                # if trainer_id == '6838':
+                #     print(f"Added trainer: {trainer_id}, Eligible courses: {eligible_course_batches}")
+                #     raise SystemExit("Stopping program")
+
         except Exception as e:
-            # print(f"Error processing trainer row: {trainer_row}, error: {e}")
             continue
 
     print("Len Trainers:", len(trainers))
@@ -323,7 +372,7 @@ def read_trainees(params: ModelParams):
         _df_enrollment = _df_enrollment[_df_enrollment["course_name"].isin(_course_list)]
 
     
-    if params.file_master_course_batch is not None:
+    if params.is_considering_shift and params.file_master_course_batch is not None:
         dfs = []
         for file in params.file_master_course_batch:
             dfs.append(pd.read_csv(file))
@@ -342,20 +391,13 @@ def read_trainees(params: ModelParams):
             trainee_cycle = trainee_row['cycle']
             trainee_company = trainee_row['company']
 
-            if params.is_considering_shift:
-                trainee_shift = trainee_row['shift']
-                if pd.isna(trainee_shift) or str(trainee_shift).strip() == "":
-                    trainee_shift = "Non Shift"
-            else:
-                trainee_shift = "NS"
-
             # Get courses for this trainee from enrollment dataframe
             enrolled_courses = _df_enrollment[_df_enrollment['employee_id'] == trainee_name]['course_name'].drop_duplicates().tolist()
 
             if enrolled_courses:  # Only include trainees with at least one course
                 enrolled_courses_batches = []
                 for course in enrolled_courses:
-                    if params.file_master_course_batch is None:
+                    if not params.is_considering_shift or params.file_master_course_batch is None:
                         batch_no = 1
                     
                     else:
@@ -369,7 +411,6 @@ def read_trainees(params: ModelParams):
                     Trainee(
                         company=trainee_company,
                         name=trainee_name,
-                        shift=trainee_shift,
                         courses=enrolled_courses_batches,
                         cycle=trainee_cycle
                     )
@@ -377,7 +418,6 @@ def read_trainees(params: ModelParams):
                 # print("Added trainee:", trainee_name, "Shift:", trainee_shift, "Cycle:", trainee_cycle, "Courses:", enrolled_courses)
 
         except Exception as e:
-            # print(f"Error processing trainee row: {trainee_row}, error: {e}")
             continue
 
 
@@ -392,9 +432,6 @@ def read_trainees(params: ModelParams):
                 "name": f"G{len(_groups) + 1}",
                 "courses": list(course_key),
                 "trainees": [],
-                "shift": trainee.shift,
-                "shift_start_hour": trainee.shift_start_hour,
-                "shift_end_hour": trainee.shift_end_hour,
                 "cycle": trainee.cycle
             }
 
@@ -415,3 +452,101 @@ def read_calendar(params: ModelParams):
         start_date=params.start_date,
         days=params.days
     )
+
+
+def read_blocked_schedule(params: ModelParams, calendar: Calendar, trainers: dict[str, Trainer], groups: dict[str, Group]):
+    if params.file_blocked_schedule is None:
+        return trainers, groups
+
+    df = pd.read_csv(params.file_blocked_schedule)
+    df['course_name'] = df['course_name'].astype(str).str.strip()
+    df = df[df['course_name']!= '']
+
+    df['trainer_id'] = df['trainer_id'].astype(str).str.strip()
+    df = df[df['trainer_id']!= '']
+    df['trainer_id'] = df['trainer_id'].str.replace('.0', '', regex=False)
+
+    df['employee_id'] = df['employee_id'].astype(str).str.strip()
+    df = df[df['employee_id']!= '']
+    df['employee_id'] = df['employee_id'].str.replace('.0', '', regex=False)
+
+    df = df[df['date'] >= params.start_date]
+
+    
+    def floor_hour(t):
+        h, m = map(int, t.split(":"))
+        return h  # floor → ignore minutes
+
+    def ceil_hour(t):
+        h, m = map(int, t.split(":"))
+        return h if m == 0 else h + 1  # ceil → +1 if there are minutes
+
+    df["start_hr"] = df["start_time"].apply(floor_hour)
+    df["end_hr"]   = df["end_time"].apply(ceil_hour)
+
+    
+    DAY_START_HOUR = 8
+    HOURS_PER_DAY = params.hours_per_day
+
+    def hour_to_index(h):
+        idx = h - DAY_START_HOUR
+        if idx < 0 or idx >= HOURS_PER_DAY:
+            return -1    # force to int even if hour invalid
+        return idx
+
+    df["start_idx"] = df["start_hr"].apply(hour_to_index)
+    df["end_idx"]   = df["end_hr"].apply(hour_to_index)
+
+    def get_date_offset(date_str: str, date_index: dict[str, int]) -> int:
+        return date_index[date_str] * HOURS_PER_DAY
+
+    df["date_idx"] = df["date"].apply(lambda d: get_date_offset(d, calendar.index))
+
+    def build_intervals(row):
+        return list(range(
+            row["date_idx"] + row["start_idx"],
+            row["date_idx"] + row["end_idx"]
+        ))
+
+    df["intervals"] = df.apply(build_intervals, axis=1)
+
+    trainer_intervals = (
+        df.groupby("trainer_id")["intervals"]
+        .apply(lambda rows: sorted(set(x for lst in rows for x in lst)))
+        .reset_index(name="trainer_interval_list")
+    )
+
+    trainer_intervals = trainer_intervals[
+        trainer_intervals["trainer_interval_list"].apply(len) > 0
+    ]
+
+    for _, row in trainer_intervals.iterrows():
+        trainer_id = row["trainer_id"]
+        intervals = row["trainer_interval_list"]
+
+        trainers[trainer_id].blocked_start_time = intervals
+
+
+
+    employee_intervals = (
+        df.groupby("employee_id")["intervals"]
+        .apply(lambda rows: sorted({x for lst in rows for x in lst}))
+        .reset_index(name="employee_interval_list")
+    )
+
+    employee_intervals = employee_intervals[
+        employee_intervals["employee_interval_list"].apply(len) > 0
+    ]
+
+    blocked_employee = employee_intervals['employee_id'].unique().tolist()
+
+    for key, group in groups.items():
+        blocked = list(set(blocked_employee) & set(group.trainees))
+
+        if blocked:
+            blocked_intervals = employee_intervals[employee_intervals['employee_id'].isin(blocked)]
+            unique_intervals = set().union(*blocked_intervals["employee_interval_list"])
+
+            groups[key].blocked_start_time = unique_intervals
+
+    return trainers, groups
